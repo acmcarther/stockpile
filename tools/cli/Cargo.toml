@@ -1,0 +1,11 @@
+[package]
+name = "tools-cli"
+version = "0.1.0"
+authors = ["Alex McArther <acmcarther@google.com>"]
+
+[[bin]]
+name = "run"
+path = "src/bin.rs"
+
+[dependencies.tools-common]
+path = "../common"
