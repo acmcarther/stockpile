@@ -1,0 +1,4 @@
+language: rust
+script:
+  - ./run_for_all build --verbose
+  - ./run_for_all test --verbose
