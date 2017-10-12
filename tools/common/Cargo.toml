@@ -1,0 +1,10 @@
+[package]
+name = "tools-common"
+version = "0.1.0"
+authors = ["Alex McArther <acmcarther@google.com>"]
+
+[dependencies]
+log = "0.3.8"
+serde = "1.0.15"
+serde_derive = "1.0.15"
+serde_yaml = "0.7.1"
