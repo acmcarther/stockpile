@@ -1,0 +1,26 @@
+[package]
+name = "tools-server"
+version = "0.0.1"
+authors = ["Alex McArther <acmcarther@gmail.com>"]
+readme = "README.md"
+license = "Apache-2.0"
+repository = "https://github.com/acmcarther/stockpile"
+
+[[bin]]
+name = "run"
+path = "src/bin/run.rs"
+
+[dependencies]
+serde = "1.0.15"
+serde_derive = "1.0.15"
+serde_yaml = "0.7.1"
+derive_builder = "0.5.0"
+git2 = "0.6.8"
+
+[dependencies.ordermap]
+version = "0.2"
+features = ["serde-1"]
+
+[dependencies.tools-common]
+path = "../common"
+
