@@ -1,4 +1,5 @@
 # Stockpile
+[![Build Status](https://travis-ci.org/acmcarther/stockpile.svg)](https://travis-ci.org/acmcarther/stockpile)
 
 An alternative resolution strategy for Cargo crates.
 
