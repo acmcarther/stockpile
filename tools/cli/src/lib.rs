@@ -33,7 +33,7 @@ pub mod commands {
       server_params_builder.repo_directory(repo_dir);
     }
 
-    let server = InProcessServer::create(server_params_builder.build().unwrap());
+    let server = InProcessServer::create(server_params_builder.build().unwrap()).unwrap();
     server.debug();
   }
 
