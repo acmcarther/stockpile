@@ -1,4 +1,7 @@
-crates:
-  []
+crate_sets:
+  - maintainer: acmcarther@gmail.com
+    crates:
+      - libc
+      - memchr
 skip_dev_dependencies:
-  []
+  - memchr

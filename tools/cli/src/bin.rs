@@ -6,6 +6,8 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_yaml;
 extern crate clap;
+extern crate fern;
+extern crate chrono;
 
 use clap::Arg;
 use clap::App;
@@ -18,6 +20,20 @@ use tools_cli::commands::TryAddingParams;
 use std::path::PathBuf;
 
 fn main() {
+  fern::Dispatch::new()
+    .format(|out, message, record| {
+      out.finish(format_args!("{}[{}][{}] {}",
+          chrono::Local::now()
+              .format("[%Y-%m-%d][%H:%M:%S]"),
+          record.target(),
+          record.level(),
+          message))
+    })
+    .level(log::LogLevelFilter::Debug)
+    .chain(std::io::stdout())
+    .apply()
+    .unwrap();
+
   let matches = App::new("stock-cli")
     .subcommand(SubCommand::with_name("snapshot_now")
                 .about("Attempt to resolve the latest versions of provided dependencies.")

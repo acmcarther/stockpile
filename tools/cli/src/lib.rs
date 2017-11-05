@@ -15,29 +15,55 @@ pub mod commands {
     pub repo_directory: Option<PathBuf>,
   }
 
+  impl <'a> From<&'a SnapshotNowParams> for ServerParamsBuilder {
+    fn from(params: &'a SnapshotNowParams) -> ServerParamsBuilder {
+      let mut server_params_builder = ServerParamsBuilder::default();
+      if let Some(ref repo_dir) = params.repo_directory {
+        server_params_builder.repo_directory(repo_dir.clone());
+      }
+      server_params_builder
+    }
+  }
+
+  pub fn snapshot_now(params: SnapshotNowParams) {
+    let server_params = ServerParamsBuilder::from(&params).build().unwrap();
+    let server = InProcessServer::create(server_params);
+  }
+
+  pub struct SyncIndexParams{
+    pub repo_directory: Option<PathBuf>,
+  }
+
+  impl <'a> From<&'a SyncIndexParams> for ServerParamsBuilder {
+    fn from(params: &'a SyncIndexParams) -> ServerParamsBuilder {
+      let mut server_params_builder = ServerParamsBuilder::default();
+      if let Some(ref repo_dir) = params.repo_directory {
+        server_params_builder.repo_directory(repo_dir.clone());
+      }
+      server_params_builder
+    }
+  }
+
+  pub fn sync_index(params: SyncIndexParams) {
+    let server_params = ServerParamsBuilder::from(&params).build().unwrap();
+    let server = InProcessServer::create(server_params);
+
+    server.synchronize_index();
+  }
+
   pub struct QueryParams {
     pub snapshot_version: Option<String>,
     pub repo_directory: Option<PathBuf>,
     pub crate_name: String,
   }
 
+  pub fn query(params: QueryParams) {
+  }
+
   pub struct TryAddingParams {
     pub snapshot_version: Option<String>,
     pub repo_directory: Option<PathBuf>,
     pub crate_name: String,
-  }
-
-  pub fn snapshot_now(params: SnapshotNowParams) {
-    let mut server_params_builder = ServerParamsBuilder::default();
-    if let Some(repo_dir) = params.repo_directory {
-      server_params_builder.repo_directory(repo_dir);
-    }
-
-    let server = InProcessServer::create(server_params_builder.build().unwrap()).unwrap();
-    server.debug();
-  }
-
-  pub fn query(params: QueryParams) {
   }
 
   pub fn try_adding(params: TryAddingParams) {
