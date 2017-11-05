@@ -1,0 +1,14 @@
+[package]
+name = "jobs"
+version = "0.1.0"
+authors = ["Alex McArther <acmcarther@gmail.com>"]
+
+[dependencies]
+aws-sdk-rust = "0.1.42"
+git2 = "0.6.8"
+hyper = "0.10.2"
+lazy_static = "0.2.9"
+tempdir = "0.3.5"
+url = "1.6.0"
+zcfg = "0.1.0"
+zcfg_flag_parser = "0.1.0"
