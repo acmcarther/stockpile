@@ -1,5 +1,5 @@
 [package]
-name = "tools-cli"
+name = "cli"
 version = "0.1.0"
 authors = ["Alex McArther <acmcarther@google.com>"]
 
@@ -16,8 +16,8 @@ clap = "2.26.2"
 fern = "0.4.3"
 chrono = "0.4.0"
 
-[dependencies.tools-common]
+[dependencies.common]
 path = "../common"
 
-[dependencies.tools-server]
+[dependencies.server]
 path = "../server"

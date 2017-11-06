@@ -1,5 +1,5 @@
-extern crate tools_common;
-extern crate tools_cli;
+extern crate common;
+extern crate cli;
 extern crate log;
 extern crate serde;
 #[macro_use(Serialize, Deserialize)]
@@ -13,10 +13,10 @@ use clap::Arg;
 use clap::App;
 use clap::SubCommand;
 use clap::ArgMatches;
-use tools_cli::commands;
-use tools_cli::commands::SnapshotNowParams;
-use tools_cli::commands::QueryParams;
-use tools_cli::commands::TryAddingParams;
+use cli::commands;
+use cli::commands::SnapshotNowParams;
+use cli::commands::QueryParams;
+use cli::commands::TryAddingParams;
 use std::path::PathBuf;
 
 fn main() {

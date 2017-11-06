@@ -1,4 +1,4 @@
-extern crate tools_server;
+extern crate server;
 
 fn main() {
   println!("hello world");

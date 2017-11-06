@@ -1,13 +1,15 @@
 [package]
-name = "tools-common"
+name = "common"
 version = "0.1.0"
 authors = ["Alex McArther <acmcarther@google.com>"]
 
 [dependencies]
+fern = "0.4.3"
 log = "0.3.8"
 serde = "1.0.15"
 serde_derive = "1.0.15"
 serde_yaml = "0.7.1"
+zcfg_flag_parser = "0.1.0"
 
 [dependencies.chrono]
 version = "0.4.0"

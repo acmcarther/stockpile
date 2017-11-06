@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate derive_builder;
-extern crate tools_common;
+extern crate common;
 extern crate serde;
 extern crate serde_yaml;
 extern crate serde_json;
@@ -17,10 +17,10 @@ use std::env;
 use std::mem;
 use std::path::PathBuf;
 use tempdir::TempDir;
-use tools_common::WorkspaceMetadata;
-use tools_common::cargo;
-use tools_common::configuration::WorkspaceConfiguration;
-use tools_common::snapshot::WorkspaceSnapshot;
+use common::WorkspaceMetadata;
+use common::cargo;
+use common::configuration::WorkspaceConfiguration;
+use common::snapshot::WorkspaceSnapshot;
 
 pub use err::ServerErr;
 

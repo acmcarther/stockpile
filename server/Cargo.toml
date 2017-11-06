@@ -1,5 +1,5 @@
 [package]
-name = "tools-server"
+name = "server"
 version = "0.0.1"
 authors = ["Alex McArther <acmcarther@gmail.com>"]
 readme = "README.md"
@@ -26,6 +26,6 @@ tempdir = "0.3.5"
 version = "0.2"
 features = ["serde-1"]
 
-[dependencies.tools-common]
+[dependencies.common]
 path = "../common"
 

@@ -3,11 +3,11 @@ extern crate serde;
 #[macro_use(Serialize, Deserialize)]
 extern crate serde_derive;
 extern crate serde_yaml;
-extern crate tools_server;
+extern crate server;
 
 pub mod commands {
-  use tools_server::InProcessServer;
-  use tools_server::ServerParamsBuilder;
+  use server::InProcessServer;
+  use server::ServerParamsBuilder;
   use std::path::PathBuf;
   use std::env;
 

@@ -3,10 +3,15 @@ extern crate serde;
 #[macro_use(Serialize, Deserialize)]
 extern crate serde_derive;
 extern crate serde_yaml;
+#[macro_use]
+extern crate zcfg_flag_parser;
 extern crate chrono;
+extern crate fern;
 
 use chrono::DateTime;
 use chrono::Utc;
+use std::env;
+use zcfg_flag_parser::FlagParser;
 
 pub mod cargo {
   use super::*;
@@ -92,6 +97,46 @@ pub mod snapshot {
 pub struct WorkspaceMetadata {
   last_index_time: Option<DateTime<Utc>>,
   crates_io_index_revision: String,
+}
+
+
+pub mod iter_util {
+  use std::fmt::Debug;
+
+  pub fn aggregate_results<O, E: Debug>(left: Result<Vec<O>, E>, right: Result<Vec<O>, E>) -> Result<Vec<O>, E> {
+    if left.is_err() {
+      return left
+    }
+    if right.is_err() {
+      return right
+    }
+
+    let mut l_inner = left.unwrap();
+    let mut r_inner = right.unwrap();
+    l_inner.append(&mut r_inner);
+    Ok(l_inner)
+  }
+}
+
+pub fn init_flags() {
+  FlagParser::new().parse_from_args(env::args().skip(1));
+}
+
+pub fn init_logger() {
+  fern::Dispatch::new()
+    .format(|out, message, record| {
+      out.finish(format_args!("{}[{}][{}] {}",
+          chrono::Local::now()
+              .format("[%Y-%m-%d][%H:%M:%S]"),
+          record.target(),
+          record.level(),
+          message))
+    })
+    .level(log::LogLevelFilter::Debug)
+    .chain(std::io::stdout())
+    .apply()
+    .unwrap();
+
 }
 
 

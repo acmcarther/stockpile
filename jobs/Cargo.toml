@@ -3,12 +3,27 @@ name = "jobs"
 version = "0.1.0"
 authors = ["Alex McArther <acmcarther@gmail.com>"]
 
+[[bin]]
+name = "run"
+path = "src/bin/run.rs"
+
 [dependencies]
 aws-sdk-rust = "0.1.42"
+chrono = "0.4.0"
+fern = "0.4.3"
 git2 = "0.6.8"
 hyper = "0.10.2"
 lazy_static = "0.2.9"
+log = "0.3.8"
+rayon = "0.8.2"
+serde = "1.0.15"
+serde_derive = "1.0.15"
+serde_json = "1.0.3"
 tempdir = "0.3.5"
 url = "1.6.0"
 zcfg = "0.1.0"
 zcfg_flag_parser = "0.1.0"
+
+[dependencies.common]
+path = "../common"
+
