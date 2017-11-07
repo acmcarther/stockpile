@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use tempdir::TempDir;
 use std::sync::Arc;
 use url::Url;
-use lcs_fetcher::common::CrateKey;
+use common::cargo::CrateKey;
 
 mod flags {
   define_pub_cfg!(crates_io_index_url,
@@ -70,6 +70,12 @@ impl From<io::Error> for UpstreamIndexErr {
 impl From<serde_json::Error> for UpstreamIndexErr {
   fn from(error: serde_json::Error) -> UpstreamIndexErr {
     UpstreamIndexErr::SerdeJsonErr(error)
+  }
+}
+
+impl Default for UpstreamIndex {
+  fn default() -> UpstreamIndex {
+    UpstreamIndex::load_from_params(UpstreamIndexParams::default()).unwrap()
   }
 }
 

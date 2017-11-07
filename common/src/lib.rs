@@ -47,6 +47,13 @@ pub mod cargo {
   pub struct ExtraEntry {
     dev_dependencies: Option<Vec<DependencyEntry>>,
   }
+
+  // Unique identifier for a Cargo crate
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+  pub struct CrateKey {
+    pub name: String,
+    pub version: String,
+  }
 }
 
 pub mod configuration {
@@ -140,6 +147,34 @@ pub fn init_logger() {
     .unwrap();
 }
 
+
+#[macro_export]
+macro_rules! define_box_clone_boilerplate {
+  ($original_ty:tt, $clone_ty:tt) => {
+    define_box_clone_boilerplate_inner!($original_ty, $original_ty, $clone_ty, $clone_ty);
+  }
+}
+
+#[macro_export]
+macro_rules! define_box_clone_boilerplate_inner {
+  ($original_ty:ty, $original_ident:ident, $clone_ty:ty, $clone_ident:ident) => {
+    pub trait $clone_ident {
+      fn clone_box(&self) -> Box<$original_ty>;
+    }
+
+    impl<T> $clone_ty for T where T: 'static + $original_ident + Clone {
+      fn clone_box(&self) -> Box<$original_ty> {
+        Box::new(self.clone())
+      }
+    }
+
+    impl Clone for Box<$original_ty> {
+      fn clone(&self) -> Box<$original_ty> {
+        self.clone_box()
+      }
+    }
+  }
+}
 
 #[cfg(test)]
 mod tests {

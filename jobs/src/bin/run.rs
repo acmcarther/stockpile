@@ -25,7 +25,7 @@ fn main() {
   common::init_flags();
   common::init_logger();
 
-  let mut jobs = get_all_jobs();
+  let mut jobs = get_job_thunks_by_name();
 
   let job_to_run = ::job_to_run::CONFIG.get_value().inner()
     .expect("--job_to_run must be specified");
@@ -46,7 +46,7 @@ fn get_lcs_fetcher() -> Box<Job> {
 }
 
 /** Enumerates all jobs with a job_to_run key */
-fn get_all_jobs() -> HashMap<&'static str, fn () -> Box<Job>> {
+fn get_job_thunks_by_name() -> HashMap<&'static str, fn () -> Box<Job>> {
   let mut jobs: HashMap<&'static str, fn () -> Box<Job>> = HashMap::new();
 
   jobs.insert("lcs-fetcher", get_lcs_fetcher);

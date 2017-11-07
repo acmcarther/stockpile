@@ -1,7 +1,7 @@
 #![feature(used)]
 #![allow(dead_code)]
 extern crate aws_sdk_rust;
-extern crate common;
+#[macro_use] extern crate common;
 extern crate git2;
 #[macro_use] extern crate derive_builder;
 extern crate hyper;

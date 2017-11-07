@@ -10,33 +10,28 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
 use std::io;
+use common::cargo::CrateKey;
+use lcs_fetcher::repository::LcsRepositorySink;
+use lcs_fetcher::repository::LcsRepositorySource;
+use lcs_fetcher::repository::HttpLcsRepository;
+use lcs_fetcher::repository::S3LcsRepository;
 
 mod flags {
   define_pub_cfg!(max_session_crates,
                   u32,
                   1000u32,
-                  "The maximum number of crates to download in a single execution of crate cloner.");
+                  "The maximum number of crates to download in a single execution of lcs-fetcher.");
 }
 
-// TODO(acmcarther): Fix visibility
-// This is a hack to let "index' see it.
-pub mod common;
 mod repository;
-mod crate_source;
-
-use lcs_fetcher::common::CrateKey;
-use lcs_fetcher::repository::LcsRepository;
-use lcs_fetcher::repository::S3LcsRepository;
-use lcs_fetcher::crate_source::UpstreamCrateSource;
-use lcs_fetcher::crate_source::S3UpstreamCrateSource;
 
 /** A Job that syncs crate artifacts from upstream Crates.io to a LCS Repository */
 #[derive(Builder)]
 #[builder(default)]
 pub struct LcsFetcherJob {
-  lcs_repository: Box<LcsRepository>,
   upstream_index: UpstreamIndex,
-  upstream_crate_source: Box<UpstreamCrateSource>,
+  lcs_sink: Box<LcsRepositorySink>,
+  lcs_source: Box<LcsRepositorySource>,
   params: LcsFetcherParams,
 }
 
@@ -59,7 +54,7 @@ impl From<io::Error> for LcsFetchErr {
 
 impl LcsFetcherJob {
   fn run_now(&mut self) -> Result<(), LcsFetchErr> {
-    let existing_crate_keys = self.lcs_repository.get_existing_crate_keys()
+    let existing_crate_keys = self.lcs_sink.get_existing_crate_keys()
       .into_iter()
       .collect::<HashSet<_>>();
     let crate_keys_in_index = self.upstream_index.get_all_crate_keys();
@@ -76,7 +71,7 @@ impl LcsFetcherJob {
     let crate_tempdir_path = crate_tempdir.path();
 
     for key_to_backfill in keys_to_backfill.into_iter() {
-      self.upstream_crate_source.fetch_crate(&key_to_backfill, &crate_tempdir_path);
+      self.lcs_source.fetch_crate(&key_to_backfill, &crate_tempdir_path);
 
       let expected_file_path: PathBuf =
         crate_tempdir_path.join(format!("/{}-{}.crate",
@@ -86,7 +81,7 @@ impl LcsFetcherJob {
         .expect(&format!("upstream crate source failed to download {:?}", expected_file_path));
 
 
-      self.lcs_repository.upload_crate(key_to_backfill, &expected_file_path);
+      self.lcs_sink.upload_crate(key_to_backfill, &expected_file_path);
 
       // Minor optimization -- remove file early if possible
       fs::remove_file(&expected_file_path);
@@ -99,9 +94,9 @@ impl LcsFetcherJob {
 impl Default for LcsFetcherJob {
   fn default() -> LcsFetcherJob {
     LcsFetcherJob {
-      lcs_repository: Box::new(S3LcsRepository::default()),
-      upstream_index: UpstreamIndex::load_from_params(UpstreamIndexParams::default()).unwrap(),
-      upstream_crate_source: Box::new(S3UpstreamCrateSource::default()),
+      upstream_index: UpstreamIndex::default(),
+      lcs_sink: Box::new(S3LcsRepository::default()),
+      lcs_source: Box::new(HttpLcsRepository::default()),
       params: LcsFetcherParams::default(),
     }
   }
