@@ -7,7 +7,21 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use tempdir::TempDir;
+use std::sync::Arc;
 use url::Url;
+use lcs_fetcher::common::CrateKey;
+
+mod flags {
+  define_pub_cfg!(crates_io_index_url,
+                  String,
+                  "https://github.com/rust-lang/crates.io-index",
+                  "The URL for the upstream crates.io index repository");
+
+  define_pub_cfg!(pre_pulled_crates_io_index_directory,
+                  ::zcfg::NoneableCfg<String>,
+                  None,
+                  "The path to the crates.io index to use in lieu of pulling a fresh copy.");
+}
 
 pub struct UpstreamIndexParams {
   url: Url,
@@ -16,8 +30,8 @@ pub struct UpstreamIndexParams {
 
 impl Default for UpstreamIndexParams {
   fn default() -> UpstreamIndexParams {
-    let url = Url::parse(&::flags::crates_io_index_url::CONFIG.get_value()).unwrap();
-    let pre_pulled_crate_path = ::flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner();
+    let url = Url::parse(&flags::crates_io_index_url::CONFIG.get_value()).unwrap();
+    let pre_pulled_crate_path = flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner();
 
     UpstreamIndexParams {
       url: url,
@@ -26,9 +40,11 @@ impl Default for UpstreamIndexParams {
   }
 }
 
+#[derive(Clone)]
 pub struct UpstreamIndex {
-  crates_io_index_repo: Repository,
+  crates_io_index_repo: Arc<Repository>,
   crates_io_index: HashMap<String, Vec<cargo::IndexEntry>>,
+  tempdir: Arc<Option<TempDir>>
 }
 
 #[derive(Debug)]
@@ -59,26 +75,38 @@ impl From<serde_json::Error> for UpstreamIndexErr {
 
 impl UpstreamIndex {
   pub fn load_from_params(params: UpstreamIndexParams) -> Result<UpstreamIndex, UpstreamIndexErr> {
-    let repo: Repository;
-    let path: PathBuf;
     if params.pre_pulled_crate_path.is_some() {
-      path = PathBuf::from(params.pre_pulled_crate_path.unwrap());
+      let path = PathBuf::from(params.pre_pulled_crate_path.unwrap());
       debug!("Loading Index from {:?}", path);
-      repo = try!(Repository::open(&path));
+      let repo = try!(Repository::open(&path));
+      let crates_io_index = try!(init_util::load_crates_io_index(path));
+      Ok(UpstreamIndex {
+        crates_io_index_repo: Arc::new(repo),
+        crates_io_index: crates_io_index.into_iter().collect(),
+        tempdir: Arc::new(None),
+      })
     } else {
       debug!("Creating temp dir for upstream crates io index");
       let dir = try!(TempDir::new("upstream_crates_io_index"));
       debug!("Cloning upstream crates io index from {}, into {:?}", params.url, dir.path());
-      repo = try!(Repository::clone(&params.url.to_string(), &dir));
-      path = dir.path().join("crates.io-index/");
+      let repo = try!(Repository::clone(&params.url.to_string(), &dir));
+      let crates_io_index = try!(init_util::load_crates_io_index(dir.path()));
+      Ok(UpstreamIndex {
+        crates_io_index_repo: Arc::new(repo),
+        tempdir: Arc::new(Some(dir)),
+        crates_io_index: crates_io_index.into_iter().collect(),
+      })
     }
-    debug!("Loading the contents of the index");
-    let crates_io_index = try!(init_util::load_crates_io_index(path));
+  }
 
-    Ok(UpstreamIndex {
-      crates_io_index_repo: repo,
-      crates_io_index: crates_io_index.into_iter().collect(),
-    })
+  pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
+    self.crates_io_index.values()
+      .flat_map(|v| v.iter())
+      .map(|index_entry| CrateKey {
+        name: index_entry.name.clone(),
+        version: index_entry.vers.clone()
+      })
+      .collect()
   }
 }
 
@@ -98,7 +126,6 @@ mod init_util {
   use super::UpstreamIndexErr;
 
   pub fn load_crates_io_index<P: AsRef<Path>>(crates_io_index_dir: P) -> Result<Vec<(String, Vec<cargo::IndexEntry>)>, UpstreamIndexErr> {
-    assert!(crates_io_index_dir.as_ref().ends_with("crates.io-index/"));
     debug!("Loading crates.io-index from {:?}", crates_io_index_dir.as_ref());
     let mut dir_iters = Vec::new();
     let mut leaves = Vec::new();

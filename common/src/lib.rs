@@ -118,10 +118,12 @@ pub mod iter_util {
   }
 }
 
+/** Initializes zcfg flags for the binary. */
 pub fn init_flags() {
-  FlagParser::new().parse_from_args(env::args().skip(1));
+  FlagParser::new().parse_from_args(env::args().skip(1)).unwrap();
 }
 
+/** Initializes the Fern logger for the binary. */
 pub fn init_logger() {
   fern::Dispatch::new()
     .format(|out, message, record| {
@@ -136,7 +138,6 @@ pub fn init_logger() {
     .chain(std::io::stdout())
     .apply()
     .unwrap();
-
 }
 
 

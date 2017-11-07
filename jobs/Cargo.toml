@@ -10,6 +10,7 @@ path = "src/bin/run.rs"
 [dependencies]
 aws-sdk-rust = "0.1.42"
 chrono = "0.4.0"
+derive_builder = "0.5.0"
 fern = "0.4.3"
 git2 = "0.6.8"
 hyper = "0.10.2"
@@ -23,6 +24,7 @@ tempdir = "0.3.5"
 url = "1.6.0"
 zcfg = "0.1.0"
 zcfg_flag_parser = "0.1.0"
+scoped_threadpool = "0.1.8"
 
 [dependencies.common]
 path = "../common"
