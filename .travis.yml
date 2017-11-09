@@ -1,7 +1,6 @@
 language: rust
 rust:
-  # Stable disabled: zcfg does not support stable
-  - beta
+  # Stable and beta disabled: zcfg does not support stable
   - nightly
 script:
   - ./run_for_all.sh build --verbose
