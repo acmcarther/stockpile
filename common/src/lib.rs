@@ -27,7 +27,6 @@ pub mod cargo {
     pub cksum: String,
     pub features: HashMap<String, Vec<String>>,
     pub yanked: Option<bool>,
-    pub extra: Option<ExtraEntry>,
   }
 
   // Mostly a copy from github/rust-lang/crates.io/src/git.rs

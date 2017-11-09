@@ -25,21 +25,23 @@ mod flags {
 
 pub struct UpstreamIndexParams {
   url: Url,
-  pre_pulled_crate_path: Option<String>,
+  pre_pulled_index_path: Option<PathBuf>,
 }
 
 impl Default for UpstreamIndexParams {
   fn default() -> UpstreamIndexParams {
     let url = Url::parse(&flags::crates_io_index_url::CONFIG.get_value()).unwrap();
-    let pre_pulled_crate_path = flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner();
+    let pre_pulled_index_path = flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner()
+      .map(PathBuf::from);
 
     UpstreamIndexParams {
       url: url,
-      pre_pulled_crate_path: pre_pulled_crate_path,
+      pre_pulled_index_path: pre_pulled_index_path,
     }
   }
 }
 
+/** The crates.io-index containing original Crate metadata. */
 #[derive(Clone)]
 pub struct UpstreamIndex {
   crates_io_index_repo: Arc<Repository>,
@@ -81,8 +83,8 @@ impl Default for UpstreamIndex {
 
 impl UpstreamIndex {
   pub fn load_from_params(params: UpstreamIndexParams) -> Result<UpstreamIndex, UpstreamIndexErr> {
-    if params.pre_pulled_crate_path.is_some() {
-      let path = PathBuf::from(params.pre_pulled_crate_path.unwrap());
+    if params.pre_pulled_index_path.is_some() {
+      let path = PathBuf::from(params.pre_pulled_index_path.unwrap());
       debug!("Loading Index from {:?}", path);
       let repo = try!(Repository::open(&path));
       let crates_io_index = try!(init_util::load_crates_io_index(path));
@@ -116,6 +118,18 @@ impl UpstreamIndex {
   }
 }
 
+fn get_path_for_crate(crate_name: &str) -> PathBuf {
+  match crate_name.len() {
+    0 => panic!("Can't generate a path for an empty string"),
+    1 => PathBuf::from(format!("1/{}", crate_name)),
+    2 => PathBuf::from(format!("2/{}", crate_name)),
+    3 => PathBuf::from(format!("3/{}", crate_name)),
+    _ => PathBuf::from(format!("{}/{}/{}",
+                               crate_name[0..2].to_owned(),
+                               crate_name[2..4].to_owned(),
+                               crate_name)),
+  }
+}
 
 mod init_util {
   use git2::Repository;
@@ -178,5 +192,105 @@ mod init_util {
 
         Ok(vec![(path, index_entries)])
       }).reduce(|| Ok(Vec::new()), iter_util::aggregate_results)
+  }
+}
+
+pub mod testing {
+  use common::cargo::IndexEntry;
+  use git2::Repository;
+  use index;
+  use serde_json;
+  use std::fs::File;
+  use std::fs;
+  use std::io::Write;
+  use tempdir::TempDir;
+
+  pub fn seed_minimum_index() -> TempDir {
+    let tempdir = TempDir::new("enpty_index").unwrap();
+    let repo = Repository::init(tempdir.path());
+    return tempdir;
+  }
+
+  pub fn seed_index_with_crates(index_entries: Vec<IndexEntry>) -> TempDir {
+    let index_tempdir = seed_minimum_index();
+
+    for entry in index_entries.iter() {
+      let path = index::get_path_for_crate(&entry.name);
+      let path_from_index = index_tempdir.path().join(path);
+      if let Some(ref parent) = path_from_index.parent() {
+        fs::create_dir_all(parent).unwrap();
+      };
+      let mut crate_file = File::create(path_from_index).unwrap();
+      let json = serde_json::to_string(&entry).unwrap();
+      crate_file.write_all(json.as_bytes()).unwrap();
+    }
+
+    index_tempdir
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use common::cargo::IndexEntry;
+  use git2::Repository;
+  use serde_json;
+  use std::fs::File;
+  use std::io::Write;
+  use std::fs;
+  use super::*;
+  use tempdir::TempDir;
+  use index;
+  use index::testing;
+
+  #[test]
+  fn get_path_for_crate_works_for_all_crate_names() {
+    assert_eq!(index::get_path_for_crate("a"),
+               PathBuf::from("1/a"));
+    assert_eq!(index::get_path_for_crate("ab"),
+               PathBuf::from("2/ab"));
+    assert_eq!(index::get_path_for_crate("abc"),
+               PathBuf::from("3/abc"));
+    assert_eq!(index::get_path_for_crate("abcd"),
+               PathBuf::from("ab/cd/abcd"));
+  }
+
+  #[test]
+  fn test_empty_local_index_works() {
+    let tempdir = testing::seed_minimum_index();
+    let params = UpstreamIndexParams {
+      url: Url::parse("http://not-resolvable").unwrap(),
+      pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
+    };
+
+    let upstream_index = UpstreamIndex::load_from_params(params).unwrap();
+
+    assert_eq!(upstream_index.get_all_crate_keys(),
+               Vec::new());
+  }
+
+  #[test]
+  fn test_loads_trivial_index() {
+      let index_entry = IndexEntry {
+        name: "a".to_owned(),
+        vers: "0.0.1".to_owned(),
+        deps: Vec::new(),
+        cksum: "111".to_owned(),
+        features: HashMap::new(),
+        yanked: None,
+      };
+    let tempdir = testing::seed_index_with_crates(vec![index_entry]);
+
+    let params = UpstreamIndexParams {
+      url: Url::parse("http://not-resolvable").unwrap(),
+      pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
+    };
+
+    let upstream_index = UpstreamIndex::load_from_params(params).unwrap();
+
+    assert_eq!(upstream_index.get_all_crate_keys(),
+               vec![CrateKey {
+                 name: "a".to_owned(),
+                 version: "0.0.1".to_owned()
+               }]);
   }
 }

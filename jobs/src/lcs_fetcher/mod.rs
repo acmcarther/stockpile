@@ -1,6 +1,3 @@
-use aws_sdk_rust::aws::s3::object::ListObjectsRequest;
-use aws_sdk_rust::aws::s3::object::ListObjectsOutput;
-use aws::SimpleS3Client;
 use tempdir::TempDir;
 use index::UpstreamIndex;
 use index::UpstreamIndexParams;
@@ -11,6 +8,8 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use std::io;
 use common::cargo::CrateKey;
+use aws_sdk_rust::aws::errors::s3::S3Error;
+use hyper;
 use lcs_fetcher::repository::LcsRepositorySink;
 use lcs_fetcher::repository::LcsRepositorySource;
 use lcs_fetcher::repository::HttpLcsRepository;
@@ -44,6 +43,8 @@ pub struct LcsFetcherParams {
 #[derive(Debug)]
 pub enum LcsFetchErr {
   IoErr(io::Error),
+  HyperErr(hyper::Error),
+  S3Err(S3Error),
 }
 
 impl From<io::Error> for LcsFetchErr {
@@ -52,9 +53,23 @@ impl From<io::Error> for LcsFetchErr {
   }
 }
 
+impl From<hyper::Error> for LcsFetchErr {
+  fn from(error: hyper::Error) -> LcsFetchErr {
+    LcsFetchErr::HyperErr(error)
+  }
+}
+
+impl From<S3Error> for LcsFetchErr {
+  fn from(error: S3Error) -> LcsFetchErr {
+    LcsFetchErr::S3Err(error)
+  }
+}
+
+
 impl LcsFetcherJob {
   fn run_now(&mut self) -> Result<(), LcsFetchErr> {
     let existing_crate_keys = self.lcs_sink.get_existing_crate_keys()
+      .unwrap()
       .into_iter()
       .collect::<HashSet<_>>();
     let crate_keys_in_index = self.upstream_index.get_all_crate_keys();
@@ -71,7 +86,7 @@ impl LcsFetcherJob {
     let crate_tempdir_path = crate_tempdir.path();
 
     for key_to_backfill in keys_to_backfill.into_iter() {
-      self.lcs_source.fetch_crate(&key_to_backfill, &crate_tempdir_path);
+      try!(self.lcs_source.fetch_crate(&key_to_backfill, &crate_tempdir_path));
 
       let expected_file_path: PathBuf =
         crate_tempdir_path.join(format!("/{}-{}.crate",
@@ -81,10 +96,10 @@ impl LcsFetcherJob {
         .expect(&format!("upstream crate source failed to download {:?}", expected_file_path));
 
 
-      self.lcs_sink.upload_crate(key_to_backfill, &expected_file_path);
+      self.lcs_sink.upload_crate(&key_to_backfill, &expected_file_path).unwrap();
 
       // Minor optimization -- remove file early if possible
-      fs::remove_file(&expected_file_path);
+      let _ = fs::remove_file(&expected_file_path);
     }
 
     Ok(())
@@ -117,4 +132,7 @@ impl Job for LcsFetcherJob {
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn test_fetcher_identifies_missing_crates() {
+  }
 }

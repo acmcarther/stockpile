@@ -1,17 +1,21 @@
 use aws::SimpleS3Client;
 use aws::SimpleS3ClientParams;
+use aws_sdk_rust::aws::errors::s3::S3Error;
 use aws_sdk_rust::aws::s3::object::ListObjectsOutput;
 use aws_sdk_rust::aws::s3::object::ListObjectsRequest;
 use common::cargo::CrateKey;
 use hyper::Client;
 use hyper::header::Connection;
+use hyper;
 use index::UpstreamIndex;
 use index::UpstreamIndexParams;
+use lcs_fetcher::LcsFetchErr;
 use std::fs::File;
+use std::fs::OpenOptions;
+use std::fs;
 use std::io::Read;
 use std::io::Write;
-use std::fs;
-use std::fs::OpenOptions;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -47,55 +51,74 @@ pub trait LcsRepositorySource: __LcsRepositorySource_BoxClone {
    * Retrieves the provided CrateKey from the internal repository, and writes it into the 
    * destination directory.
    */
-  fn fetch_crate(&self, key: &CrateKey, destination: &Path);
+  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr>;
 }
 define_box_clone_boilerplate!(LcsRepositorySource, __LcsRepositorySource_BoxClone);
 
 /** A "LocalCrateService" repository sink, which can receive new crates. */
 pub trait LcsRepositorySink: __LcsRepositorySink_BoxClone {
   /** Retrieves all known crate keys. */
-  fn get_existing_crate_keys(&self) -> Vec<CrateKey>;
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr>;
 
   /** Uploads a new crate with the provide crate key for the file at the path. */
-  fn upload_crate(&mut self, key: CrateKey, path: &Path);
+  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result<(), LcsFetchErr>;
 }
 define_box_clone_boilerplate!(LcsRepositorySink, __LcsRepositorySink_BoxClone);
+
 
 /** A "LocalCrateService" repository defined out of the local file system. */
 #[derive(Clone)]
 pub struct LocalFsLcsRepository {
-  crates_path: PathBuf
+  crates_path: PathBuf,
+  backing_tmpdir: Arc<Option<TempDir>>
 }
 
 impl LocalFsLcsRepository {
   fn new(crates_path: PathBuf) -> LocalFsLcsRepository {
     assert!(crates_path.is_dir());
     LocalFsLcsRepository {
-      crates_path: crates_path
+      crates_path: crates_path,
+      backing_tmpdir: Arc::new(None)
     }
+  }
+
+  fn from_tmp() -> Result<LocalFsLcsRepository, LcsFetchErr> {
+    let tempdir = try!(TempDir::new("local_fs_lcs_repo"));
+    let index_path =
+      tempdir.path().join("index.txt");
+    try!(File::create(index_path));
+
+    Ok(LocalFsLcsRepository {
+      crates_path: tempdir.path().to_path_buf(),
+      backing_tmpdir: Arc::new(Some(tempdir)),
+    })
+  }
+
+  fn get_index_path(&self) -> PathBuf {
+    self.crates_path.join("index.txt")
   }
 }
 
 impl LcsRepositorySink for LocalFsLcsRepository {
-  fn get_existing_crate_keys(&self) -> Vec<CrateKey> {
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr> {
     // TODO(acmcarther): Clean this API up. Its super unsafe
     let index_path =
       self.crates_path.join("index.txt");
 
-    let mut index_file = File::open(index_path).unwrap();
+    let mut index_file = try!(File::open(index_path));
     let mut contents = String::new();
-    index_file.read_to_string(&mut contents).unwrap();
-    contents.lines()
-      .map(|line| line.split(',').collect::<Vec<_>>())
+    try!(index_file.read_to_string(&mut contents));
+    Ok(contents.lines()
+      .map(|line| line.split(':').collect::<Vec<_>>())
       .map(|line_parts| {
         CrateKey {
           name: line_parts.get(0).unwrap().to_string(),
           version: line_parts.get(1).unwrap().to_string(),
         }
-      }).collect()
+      }).collect())
   }
 
-  fn upload_crate(&mut self, key: CrateKey, path: &Path) {
+  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result <(), LcsFetchErr> {
     // TODO(acmcarther): Clean this API up. Its super unsafe
     let crate_filename = format!("{name}-{version}.crate",
                                  name = key.name,
@@ -103,17 +126,17 @@ impl LcsRepositorySink for LocalFsLcsRepository {
     let index_path = self.crates_path.join("index.txt");
     let crate_path = self.crates_path.join(&crate_filename);
 
-    fs::copy(path, crate_path).unwrap();
+    try!(fs::copy(path, crate_path));
 
-    let mut index_file = OpenOptions::new()
+    let mut index_file = try!(OpenOptions::new()
       .append(true)
-      .open(index_path)
-      .unwrap();
+      .open(index_path));
 
-    index_file.write_all(format!("{name},{version}\n",
+    try!(index_file.write_all(format!("{name}:{version}\n",
                                  name = key.name,
-                                 version = key.version).as_bytes())
-      .unwrap();
+                                 version = key.version).as_bytes()));
+    Ok(())
+
   }
 }
 
@@ -144,7 +167,7 @@ impl Default for S3LcsRepository {
 }
 
 impl LcsRepositorySink for S3LcsRepository {
-  fn get_existing_crate_keys(&self) -> Vec<CrateKey> {
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr> {
     let request = ListObjectsRequest {
       bucket: self.s3_bucket_name.clone(),
       version: Some(1),
@@ -154,9 +177,9 @@ impl LcsRepositorySink for S3LcsRepository {
       delimiter: None,
       encoding_type: None,
     };
-    let response = self.s3_client.inner_client.list_objects(&request).unwrap();
+    let response = try!(self.s3_client.inner_client.list_objects(&request));
     let contents = response.contents;
-    contents.into_iter()
+    Ok(contents.into_iter()
       .map(|c| c.key)
       .map(|k| {
         let split = k.split(':').collect::<Vec<_>>();
@@ -164,13 +187,13 @@ impl LcsRepositorySink for S3LcsRepository {
           name: split.get(0).cloned().unwrap().to_owned(),
           version: split.get(1).cloned().unwrap().to_owned(),
         }
-      }).collect()
+      }).collect())
   }
 
-  fn upload_crate(&mut self, key: CrateKey, path: &Path) {
+  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result<(), LcsFetchErr> {
     // TODO: Stub
     warn!("S3LcsRepository::upload_crate is unimplemented");
-    ()
+    Ok(())
   }
 }
 
@@ -202,30 +225,102 @@ impl HttpLcsRepository {
 
 impl LcsRepositorySource for HttpLcsRepository {
   // TODO(acmcarther): Handle errors gracefully
-  fn fetch_crate(&self, key: &CrateKey, destination: &Path) {
+  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr>{
     let full_url = format!("{prefix}/{crate_name}/{crate_name}-{crate_version}.crate",
                            prefix=self.http_prefix,
                            crate_name=key.name,
                            crate_version=key.version);
 
-    let mut res = self.client.get(&full_url)
+    let mut res = try!(self.client.get(&full_url)
       .header(Connection::close())
-      .send().unwrap();
+      .send());
 
     let mut bytes = Vec::new();
-    res.read_to_end(&mut bytes).unwrap();
+    try!(res.read_to_end(&mut bytes));
 
     let output_path = destination.join(&format!("/{crate_name}-{crate_version}.crate",
                                                 crate_name=key.name,
                                                 crate_version=key.version));
 
-    let mut file = File::create(&output_path).unwrap();
+    let mut file = try!(File::create(&output_path));
 
-    file.write_all(bytes.as_slice()).unwrap();
+    try!(file.write_all(bytes.as_slice()));
+    Ok(())
+  }
+}
+
+mod testing {
+  use super::*;
+  use tempdir::TempDir;
+
+  pub struct TestingCrate {
+    pub key: CrateKey,
+    pub contents: Vec<u8>
+  }
+
+  pub fn create_localfs_for_testing(crates: &Vec<TestingCrate>) -> Result<LocalFsLcsRepository, LcsFetchErr> {
+    let mut lfs_lcs_repo = try!(LocalFsLcsRepository::from_tmp());
+    let tempdir = try!(TempDir::new("seed_crates"));
+
+    for krate in crates.iter() {
+      let crate_path = tempdir.path().join(&format!("{name}-{version}.crate",
+                                                    name = krate.key.name,
+                                                    version = krate.key.version));
+      let mut crate_on_fs = try!(File::create(&crate_path));
+      try!(crate_on_fs.write_all(krate.contents.as_slice()));
+      try!(lfs_lcs_repo.upload_crate(&krate.key, &crate_path));
+    }
+
+    return Ok(lfs_lcs_repo);
   }
 }
 
 #[cfg(test)]
 mod tests {
+  pub use super::*;
+  mod localfs {
+    use lcs_fetcher::repository::testing::TestingCrate;
+    use lcs_fetcher::repository::testing;
+    use super::*;
 
+    #[test]
+    fn test_empty_fs_behaves_correctly() {
+      let lfs_lcs_repo = LocalFsLcsRepository::from_tmp().unwrap();
+      let get_res = lfs_lcs_repo.get_existing_crate_keys();
+
+      assert!(get_res.is_ok());
+      assert_eq!(get_res.unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn test_seeded_fs_contains_expected_crates() {
+      let testing_crates = vec![
+        TestingCrate {
+          key: CrateKey {
+            name: "example".to_owned(),
+            version: "1.0.0".to_owned(),
+          },
+          contents: b"CrateTarContents".to_vec()
+        }
+      ];
+      let lfs_lcs_repo = testing::create_localfs_for_testing(&testing_crates).unwrap();
+
+      let get_res = lfs_lcs_repo.get_existing_crate_keys();
+
+      assert!(get_res.is_ok());
+      assert_eq!(get_res.unwrap(), vec![CrateKey {
+        name: "example".to_owned(),
+        version: "1.0.0".to_owned(),
+      }]);
+    }
+
+  }
+
+  mod http {
+    // TODO(acmcarther): Spin up hyper testing this
+  }
+
+  mod s3 {
+    // TODO(acmcarther): Some kind of testingg strategy
+  }
 }

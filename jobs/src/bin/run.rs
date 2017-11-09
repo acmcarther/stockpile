@@ -1,14 +1,12 @@
 #![feature(used)]
 #[macro_use]
 extern crate zcfg;
-#[macro_use]
 extern crate zcfg_flag_parser;
 extern crate jobs;
 #[macro_use]
 extern crate lazy_static;
 extern crate fern;
 extern crate chrono;
-#[macro_use]
 extern crate log;
 extern crate common;
 
