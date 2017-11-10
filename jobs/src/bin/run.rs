@@ -11,6 +11,7 @@ extern crate log;
 extern crate common;
 
 use jobs::LcsFetcherJob;
+use jobs::AisBackfillerJob;
 use jobs::Job;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -34,6 +35,7 @@ lazy_static! {
   static ref JOBS: HashMap<&'static str, fn() -> Box<Job>> = {
     let mut jobs: HashMap<&'static str, fn() -> Box<Job>> = HashMap::new();
     jobs.insert("lcs-fetcher", get_lcs_fetcher);
+    jobs.insert("ais-backfiller", get_ais_backfiller);
     jobs
   };
 
@@ -66,4 +68,8 @@ fn get_lcs_fetcher() -> Box<Job> {
     "cwd" => Box::new(LcsFetcherJob::from_crates_io_to_cwd()),
     other => panic!("Unknown --fetch_destination \"{}\"", other),
   }
+}
+
+fn get_ais_backfiller() -> Box<Job> {
+  Box::new(AisBackfillerJob::default())
 }
