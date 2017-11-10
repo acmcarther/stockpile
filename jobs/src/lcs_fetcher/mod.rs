@@ -170,22 +170,4 @@ mod tests {
 
     lcs_fetcher_job.run_now();
   }
-
-  /*
-  #[test]
-  fn test_fetcher_downloads_missing_crates() {
-    let mut source_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
-    let mut dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
-    let scratch_dir = TempDir::new("fake_crate_scratch").unwrap();
-    let fake_crate_path = scratch_dir.path().join("fake-crate.crate");
-    File::create(&fake_crate_path).unwrap();
-
-    source_fs_lcs.upload_crate(
-      &CrateKey {
-        name: "crate_1".to_owned(),
-        version: "0.0.1".to_owned(),
-      },
-      &fake_crate_path).unwrap();
-  }
-  */
 }
