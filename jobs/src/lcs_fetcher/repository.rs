@@ -1,25 +1,18 @@
 use aws::SimpleS3Client;
 use aws::SimpleS3ClientParams;
-use aws_sdk_rust::aws::errors::s3::S3Error;
-use aws_sdk_rust::aws::s3::object::ListObjectsOutput;
 use aws_sdk_rust::aws::s3::object::ListObjectsRequest;
 use common::cargo::CrateKey;
 use hyper::Client;
 use hyper::header::Connection;
-use hyper;
-use index::UpstreamIndex;
-use index::UpstreamIndexParams;
 use lcs_fetcher::LcsFetchErr;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::fs;
 use std::io::Read;
 use std::io::Write;
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use super::Job;
 use tempdir::TempDir;
 
 mod flags {
@@ -74,6 +67,12 @@ pub struct LocalFsLcsRepository {
 }
 
 impl LocalFsLcsRepository {
+  /**
+   * Creates an LCS based in the provided directory.
+   *
+   * Please note that the LCS will store crates directly in the directory,
+   * which can cause filesystem issues if the crate count grows past a few hundred.
+   */
   fn new(crates_path: PathBuf) -> LocalFsLcsRepository {
     assert!(crates_path.is_dir());
     LocalFsLcsRepository {
@@ -82,6 +81,7 @@ impl LocalFsLcsRepository {
     }
   }
 
+  /** Creates an LCS based out of a temporary directory. */
   fn from_tmp() -> Result<LocalFsLcsRepository, LcsFetchErr> {
     let tempdir = try!(TempDir::new("local_fs_lcs_repo"));
     let index_path =
@@ -94,12 +94,14 @@ impl LocalFsLcsRepository {
     })
   }
 
+  /** Returns the path to the index file for this LCS */
   fn get_index_path(&self) -> PathBuf {
     self.crates_path.join("index.txt")
   }
 }
 
 impl LcsRepositorySink for LocalFsLcsRepository {
+  /** Reads the index file for the LCS, and yields the parsed contents. */
   fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr> {
     // TODO(acmcarther): Clean this API up. Its super unsafe
     let index_path =
@@ -118,6 +120,7 @@ impl LcsRepositorySink for LocalFsLcsRepository {
       }).collect())
   }
 
+  /** Inserts a crate into the local directory, and appends it into the index. */
   fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result <(), LcsFetchErr> {
     // TODO(acmcarther): Clean this API up. Its super unsafe
     let crate_filename = format!("{name}-{version}.crate",
@@ -148,6 +151,7 @@ pub struct S3LcsRepository {
 }
 
 impl Default for S3LcsRepository {
+  /** Produces an LCS repository that will read from S3 using flag args. */
   fn default() -> S3LcsRepository {
     S3LcsRepository {
       s3_bucket_name:
@@ -167,6 +171,7 @@ impl Default for S3LcsRepository {
 }
 
 impl LcsRepositorySink for S3LcsRepository {
+  /** Queries S3 for the list of all crate objects in the configured bucket. */
   fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr> {
     let request = ListObjectsRequest {
       bucket: self.s3_bucket_name.clone(),
@@ -190,8 +195,9 @@ impl LcsRepositorySink for S3LcsRepository {
       }).collect())
   }
 
-  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result<(), LcsFetchErr> {
-    // TODO: Stub
+  /** Inserts the provided crate file (at path) into S3. */
+  fn upload_crate(&mut self, _key: &CrateKey, _path: &Path) -> Result<(), LcsFetchErr> {
+    // TODO(acmcarther): Implement
     warn!("S3LcsRepository::upload_crate is unimplemented");
     Ok(())
   }
@@ -206,6 +212,7 @@ pub struct HttpLcsRepository {
 }
 
 impl Default for HttpLcsRepository {
+  /** Produces an LCS from the configured server URL. */
   fn default() -> HttpLcsRepository {
     HttpLcsRepository {
       http_prefix: flags::upstream_crate_server_url::CONFIG.get_value(),
@@ -224,7 +231,7 @@ impl HttpLcsRepository {
 }
 
 impl LcsRepositorySource for HttpLcsRepository {
-  // TODO(acmcarther): Handle errors gracefully
+  /** Retrieves a crate into the destination directory by reading from the configured URL. */
   fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr>{
     let full_url = format!("{prefix}/{crate_name}/{crate_name}-{crate_version}.crate",
                            prefix=self.http_prefix,
@@ -253,11 +260,13 @@ mod testing {
   use super::*;
   use tempdir::TempDir;
 
+  /** A testing crate with contents. */
   pub struct TestingCrate {
     pub key: CrateKey,
     pub contents: Vec<u8>
   }
 
+  /** Creates a complete LCS in temp containing the provided crates. */
   pub fn create_localfs_for_testing(crates: &Vec<TestingCrate>) -> Result<LocalFsLcsRepository, LcsFetchErr> {
     let mut lfs_lcs_repo = try!(LocalFsLcsRepository::from_tmp());
     let tempdir = try!(TempDir::new("seed_crates"));

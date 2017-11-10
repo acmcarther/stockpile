@@ -124,6 +124,12 @@ pub mod iter_util {
   }
 }
 
+/** Initializes all of the things. */
+pub fn init() {
+  init_flags();
+  init_logger();
+}
+
 /** Initializes zcfg flags for the binary. */
 pub fn init_flags() {
   FlagParser::new().parse_from_args(env::args().skip(1)).unwrap();
@@ -157,6 +163,7 @@ macro_rules! define_box_clone_boilerplate {
 #[macro_export]
 macro_rules! define_box_clone_boilerplate_inner {
   ($original_ty:ty, $original_ident:ident, $clone_ty:ty, $clone_ident:ident) => {
+    #[allow(non_camel_case_types)]
     pub trait $clone_ident {
       fn clone_box(&self) -> Box<$original_ty>;
     }
@@ -170,6 +177,17 @@ macro_rules! define_box_clone_boilerplate_inner {
     impl Clone for Box<$original_ty> {
       fn clone(&self) -> Box<$original_ty> {
         self.clone_box()
+      }
+    }
+  }
+}
+
+#[macro_export]
+macro_rules! define_from_error_boilerplate {
+  ($source_ty:ty, $dest_ty:ty, $dest_constructor:expr) => {
+    impl From<$source_ty> for $dest_ty {
+      fn from(error: $source_ty) -> $dest_ty {
+        $dest_constructor(error)
       }
     }
   }

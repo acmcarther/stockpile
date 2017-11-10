@@ -13,41 +13,48 @@ extern crate common;
 use jobs::LcsFetcherJob;
 use jobs::Job;
 use std::collections::HashMap;
+use std::ops::Deref;
 
 define_pub_cfg!(job_to_run,
                 ::zcfg::NoneableCfg<String>,
                 None,
                 "Which job should be run.");
 
-fn main() {
-  common::init_flags();
-  common::init_logger();
+lazy_static! {
+  /**
+   * A mapping from job name (flag) to a function yielding the job.
+   *
+   * A level of indirection is needed to prevent constructing the job unless we need it. Some jobs
+   * have mandatory flags that we want to avoid evaluating unless the job is requested.
+   */
+  static ref JOBS: HashMap<&'static str, fn() -> Box<Job>> = {
+    let mut jobs: HashMap<&'static str, fn() -> Box<Job>> = HashMap::new();
+    jobs.insert("lcs-fetcher", get_lcs_fetcher);
+    jobs
+  };
 
-  let mut jobs = get_job_thunks_by_name();
+  /** A list of all job keys. */
+  static ref ALL_JOBS: Vec<&'static str> = {
+    JOBS.keys()
+      .cloned()
+      .collect()
+  };
+}
+
+fn main() {
+  common::init();
 
   let job_to_run = ::job_to_run::CONFIG.get_value().inner()
     .expect("--job_to_run must be specified");
 
-  let all_jobs: Vec<String> = jobs.keys()
-    .cloned()
-    .map(str::to_owned)
-    .collect();
+  let job_thunk = JOBS.get(job_to_run.as_str())
+    .expect(&format!("Unknown job name {}, known jobs are {:?}",
+                     job_to_run,
+                     ALL_JOBS.deref()));
 
-  let job = jobs.get_mut(job_to_run.as_str())
-    .expect(&format!("Unknown job name {}, known jobs are {:?}", job_to_run, all_jobs));
-
-  job().run();
+  job_thunk().run();
 }
 
 fn get_lcs_fetcher() -> Box<Job> {
   Box::new(LcsFetcherJob::default())
-}
-
-/** Enumerates all jobs with a job_to_run key */
-fn get_job_thunks_by_name() -> HashMap<&'static str, fn () -> Box<Job>> {
-  let mut jobs: HashMap<&'static str, fn () -> Box<Job>> = HashMap::new();
-
-  jobs.insert("lcs-fetcher", get_lcs_fetcher);
-
-  return jobs;
 }

@@ -1,13 +1,10 @@
 use tempdir::TempDir;
 use index::UpstreamIndex;
-use index::UpstreamIndexParams;
 use super::Job;
 use std::fs;
-use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
 use std::io;
-use common::cargo::CrateKey;
 use aws_sdk_rust::aws::errors::s3::S3Error;
 use hyper;
 use lcs_fetcher::repository::LcsRepositorySink;
@@ -34,10 +31,30 @@ pub struct LcsFetcherJob {
   params: LcsFetcherParams,
 }
 
+impl Default for LcsFetcherJob {
+  fn default() -> LcsFetcherJob {
+    LcsFetcherJob {
+      upstream_index: UpstreamIndex::default(),
+      lcs_sink: Box::new(S3LcsRepository::default()),
+      lcs_source: Box::new(HttpLcsRepository::default()),
+      params: LcsFetcherParams::default(),
+    }
+  }
+}
+
+
 #[derive(Clone, Builder)]
 #[builder(default)]
 pub struct LcsFetcherParams {
   pub max_session_crates: u32,
+}
+
+impl Default for LcsFetcherParams {
+  fn default() -> LcsFetcherParams {
+    LcsFetcherParams {
+      max_session_crates: flags::max_session_crates::CONFIG.get_value(),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -46,25 +63,9 @@ pub enum LcsFetchErr {
   HyperErr(hyper::Error),
   S3Err(S3Error),
 }
-
-impl From<io::Error> for LcsFetchErr {
-  fn from(error: io::Error) -> LcsFetchErr {
-    LcsFetchErr::IoErr(error)
-  }
-}
-
-impl From<hyper::Error> for LcsFetchErr {
-  fn from(error: hyper::Error) -> LcsFetchErr {
-    LcsFetchErr::HyperErr(error)
-  }
-}
-
-impl From<S3Error> for LcsFetchErr {
-  fn from(error: S3Error) -> LcsFetchErr {
-    LcsFetchErr::S3Err(error)
-  }
-}
-
+define_from_error_boilerplate!(io::Error, LcsFetchErr, LcsFetchErr::IoErr);
+define_from_error_boilerplate!(hyper::Error, LcsFetchErr, LcsFetchErr::HyperErr);
+define_from_error_boilerplate!(S3Error, LcsFetchErr, LcsFetchErr::S3Err);
 
 impl LcsFetcherJob {
   fn run_now(&mut self) -> Result<(), LcsFetchErr> {
@@ -106,24 +107,6 @@ impl LcsFetcherJob {
   }
 }
 
-impl Default for LcsFetcherJob {
-  fn default() -> LcsFetcherJob {
-    LcsFetcherJob {
-      upstream_index: UpstreamIndex::default(),
-      lcs_sink: Box::new(S3LcsRepository::default()),
-      lcs_source: Box::new(HttpLcsRepository::default()),
-      params: LcsFetcherParams::default(),
-    }
-  }
-}
-
-impl Default for LcsFetcherParams {
-  fn default() -> LcsFetcherParams {
-    LcsFetcherParams {
-      max_session_crates: flags::max_session_crates::CONFIG.get_value(),
-    }
-  }
-}
 impl Job for LcsFetcherJob {
   fn run(&mut self) {
     self.run_now().unwrap()

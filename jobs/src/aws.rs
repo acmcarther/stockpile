@@ -10,6 +10,7 @@ use std;
 use std::sync::Arc;
 use url::Url;
 
+/** A an alias for the crazy aws client type. */
 type AbsurdAwsType =
   aws_sdk_rust::aws::s3::s3client::S3Client<
     aws_sdk_rust::aws::common::credentials::BaseAutoRefreshingProvider<
@@ -17,11 +18,17 @@ type AbsurdAwsType =
       std::cell::RefCell<aws_sdk_rust::aws::common::credentials::AwsCredentials>>,
     hyper::Client>;
 
+/**
+ * A wrapper around a default configured S3 Client.
+ *
+ * This type serves to hide the type parameter noise from the underlying client.
+ */
 #[derive(Clone)]
 pub struct SimpleS3Client {
   pub inner_client: Arc<AbsurdAwsType>
 }
 
+/** The set of parameters needed to fully specify a SimpleS3Client. */
 pub struct SimpleS3ClientParams {
   pub api_url: String,
   pub access_key_id: String,
@@ -29,6 +36,11 @@ pub struct SimpleS3ClientParams {
 }
 
 impl SimpleS3Client {
+  /**
+   * Instantiates a SimpleS3Client from provided params.
+   *
+   * Please note that this function does not verify that the S3 client is functional.
+   */
   pub fn new(params: SimpleS3ClientParams) -> SimpleS3Client {
     let s3_url = Url::parse(&params.api_url).unwrap();
 
