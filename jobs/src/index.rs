@@ -233,14 +233,8 @@ pub mod testing {
 #[cfg(test)]
 mod tests {
   use common::cargo::IndexEntry;
-  use git2::Repository;
-  use serde_json;
-  use std::fs::File;
-  use std::io::Write;
-  use std::fs;
   use std::path::PathBuf;
   use super::*;
-  use tempdir::TempDir;
   use index::testing;
 
   #[test]

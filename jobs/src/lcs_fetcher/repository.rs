@@ -389,7 +389,7 @@ mod tests {
 
       let mut message = String::new();
       let mut file = File::open(temp_dest.path().join("example-1.0.0.crate")).unwrap();
-      file.read_to_string(&mut message);
+      file.read_to_string(&mut message).unwrap();
 
       assert_eq!(message, "CrateTarContents".to_owned());
     }

@@ -132,24 +132,16 @@ impl Job for LcsFetcherJob {
 
 #[cfg(test)]
 mod tests {
-  use common::cargo::CrateKey;
   use index::UpstreamIndex;
   use index::UpstreamIndexParamsBuilder;
   use index;
   use lcs_fetcher::LcsFetcherJobBuilder;
-  use lcs_fetcher::LcsFetcherParams;
-  use lcs_fetcher::repository::LcsRepositorySink;
-  use lcs_fetcher::repository::LcsRepositorySource;
   use lcs_fetcher::repository::LocalFsLcsRepository;
-  use lcs_fetcher::repository::testing::TestingCrate;
-  use std::fs::File;
-  use tempdir::TempDir;
-  use url::Url;
 
   #[test]
   fn test_trivial_fetcher_doesnt_explode() {
-    let mut source_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
-    let mut dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
+    let source_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
+    let dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
     let upstream_index = {
       let tempdir = index::testing::seed_minimum_index();
       let params = UpstreamIndexParamsBuilder::default()
@@ -168,6 +160,6 @@ mod tests {
         .build()
         .unwrap();
 
-    lcs_fetcher_job.run_now();
+    lcs_fetcher_job.run_now().unwrap();
   }
 }

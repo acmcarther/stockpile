@@ -18,9 +18,11 @@ extern crate url;
 mod aws;
 mod index;
 mod lcs_fetcher;
+mod ais_backfiller;
 
 pub trait Job {
   fn run(&mut self);
 }
 
 pub use lcs_fetcher::LcsFetcherJob;
+pub use ais_backfiller::AisBackfillerJob;
