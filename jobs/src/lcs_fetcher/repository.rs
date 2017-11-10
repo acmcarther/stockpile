@@ -34,7 +34,7 @@ mod flags {
                   "The location of the local crate service S3 Bucket.");
   define_pub_cfg!(upstream_crate_server_url,
                   String,
-                  "https://crates-io.s3-us-west-1.amazonaws.com/crates/",
+                  "http://crates-io.s3-us-west-1.amazonaws.com/crates",
                   "The url prefix for the upstream crate system. Typically cargo's backing storage.");
 }
 
@@ -97,7 +97,10 @@ impl LocalFsLcsRepository {
   pub fn from_cwd() -> Result<LocalFsLcsRepository, LcsFetchErr> {
     let cwd = try!(::std::env::current_dir());
     let index_path = cwd.join("index.txt");
-    let _ = File::create(index_path);
+    let _ = try!(OpenOptions::new()
+      .append(true)
+      .create(true)
+      .open(index_path));
 
     Ok(LocalFsLcsRepository {
       crates_path: cwd,
@@ -120,14 +123,15 @@ impl LocalFsLcsRepository {
    *   $FIRST_TWO_CHARS/$NEXT_TWO_CHARS/
    */
   fn get_directory_for_crate(crate_name: &str) -> PathBuf {
-    match crate_name.len() {
+    let lower_crate_name = crate_name.to_lowercase();
+    match lower_crate_name.len() {
       0 => panic!("Can't generate a path for an empty string"),
       1 => PathBuf::from("1/"),
       2 => PathBuf::from("2/"),
       3 => PathBuf::from("3/"),
       _ => PathBuf::from(format!("{}/{}/",
-                                 crate_name[0..2].to_owned(),
-                                 crate_name[2..4].to_owned())),
+                                 lower_crate_name[0..2].to_owned(),
+                                 lower_crate_name[2..4].to_owned())),
     }
   }
 
@@ -161,14 +165,15 @@ impl LcsRepositorySink for LocalFsLcsRepository {
     let mut index_file = try!(File::open(index_path));
     let mut contents = String::new();
     try!(index_file.read_to_string(&mut contents));
-    Ok(contents.lines()
+    let results: Vec<CrateKey> = contents.lines()
       .map(|line| line.split(':').collect::<Vec<_>>())
       .map(|line_parts| {
         CrateKey {
           name: line_parts.get(0).unwrap().to_string(),
           version: line_parts.get(1).unwrap().to_string(),
         }
-      }).collect())
+      }).collect();
+    Ok(results)
   }
 
   /** Inserts a crate into the local directory, and appends it into the index. */
@@ -293,16 +298,19 @@ impl LcsRepositorySource for HttpLcsRepository {
                            crate_name=key.name,
                            crate_version=key.version);
 
+    debug!("Downloading from http");
     let mut res = try!(self.client.get(&full_url)
       .header(Connection::close())
       .send());
+    debug!("Finished Download");
 
     let mut bytes = Vec::new();
     try!(res.read_to_end(&mut bytes));
 
-    let output_path = destination.join(&format!("/{crate_name}-{crate_version}.crate",
+    let output_path = destination.join(&format!("{crate_name}-{crate_version}.crate",
                                                 crate_name=key.name,
                                                 crate_version=key.version));
+    debug!("Copying to destination {:?}", output_path);
 
     let mut file = try!(File::create(&output_path));
 

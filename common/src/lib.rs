@@ -48,7 +48,7 @@ pub mod cargo {
   }
 
   // Unique identifier for a Cargo crate
-  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
   pub struct CrateKey {
     pub name: String,
     pub version: String,

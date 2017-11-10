@@ -85,7 +85,8 @@ impl LcsFetcherJob {
       .unwrap()
       .into_iter()
       .collect::<HashSet<_>>();
-    let crate_keys_in_index = self.upstream_index.get_all_crate_keys();
+    let mut crate_keys_in_index = self.upstream_index.get_all_crate_keys();
+    crate_keys_in_index.sort_by_key(|k| k.name.to_lowercase());
 
     let keys_to_backfill = crate_keys_in_index
       .into_iter()
@@ -97,13 +98,15 @@ impl LcsFetcherJob {
 
     let crate_tempdir = try!(TempDir::new("downloaded_crate_scratch"));
     let crate_tempdir_path = crate_tempdir.path();
+    info!("Temp staging path is {:?}",crate_tempdir_path);
 
     for key_to_backfill in keys_to_backfill.into_iter() {
       info!("Downloading {:?}", key_to_backfill);
       try!(self.lcs_source.fetch_crate(&key_to_backfill, &crate_tempdir_path));
+      debug!("Finished download");
 
       let expected_file_path: PathBuf =
-        crate_tempdir_path.join(format!("/{}-{}.crate",
+        crate_tempdir_path.join(format!("{}-{}.crate",
                                         key_to_backfill.name,
                                         key_to_backfill.version));
       fs::metadata(&expected_file_path)
