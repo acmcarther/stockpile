@@ -189,7 +189,7 @@ pub mod testing {
    * If the crate name is four or more characters, the path is
    *   $FIRST_TWO_CHARS/$NEXT_TWO_CHARS/$CRATE_NAME
    */
-  fn get_path_for_crate(crate_name: &str) -> PathBuf {
+  pub fn get_path_for_crate(crate_name: &str) -> PathBuf {
     match crate_name.len() {
       0 => panic!("Can't generate a path for an empty string"),
       1 => PathBuf::from(format!("1/{}", crate_name)),
