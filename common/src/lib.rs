@@ -152,7 +152,6 @@ pub fn init_logger() {
     .unwrap();
 }
 
-
 #[macro_export]
 macro_rules! define_box_clone_boilerplate {
   ($original_ty:tt, $clone_ty:tt) => {
