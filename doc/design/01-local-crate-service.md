@@ -57,7 +57,6 @@ Monitoring and Alerting
 
 Storage
 - Crates will be stored persistently in Minio through the S3 API
-- lcs.metadata will be stored in cluster Etcd, or Minio directly if too large for Etcd
 
 Job Scheduling
 - lcs-fetcher will be scheduled by a CronJob task in the cluster at some regular frequency.
