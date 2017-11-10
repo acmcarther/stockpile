@@ -19,6 +19,10 @@ define_pub_cfg!(job_to_run,
                 ::zcfg::NoneableCfg<String>,
                 None,
                 "Which job should be run.");
+define_pub_cfg!(fetch_destination,
+                String,
+                "s3",
+                "Where to fetch the crates into (cwd or s3)");
 
 lazy_static! {
   /**
@@ -56,5 +60,10 @@ fn main() {
 }
 
 fn get_lcs_fetcher() -> Box<Job> {
-  Box::new(LcsFetcherJob::default())
+  let destination = ::fetch_destination::CONFIG.get_value();
+  match destination.as_str() {
+    "s3" => Box::new(LcsFetcherJob::from_crates_io_to_s3()),
+    "cwd" => Box::new(LcsFetcherJob::from_crates_io_to_cwd()),
+    other => panic!("Unknown --fetch_destination \"{}\"", other),
+  }
 }

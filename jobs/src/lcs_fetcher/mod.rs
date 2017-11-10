@@ -9,6 +9,7 @@ use aws_sdk_rust::aws::errors::s3::S3Error;
 use hyper;
 use lcs_fetcher::repository::LcsRepositorySink;
 use lcs_fetcher::repository::LcsRepositorySource;
+use lcs_fetcher::repository::LocalFsLcsRepository;
 use lcs_fetcher::repository::HttpLcsRepository;
 use lcs_fetcher::repository::S3LcsRepository;
 
@@ -30,23 +31,11 @@ mod repository;
 #[derive(Builder)]
 pub struct LcsFetcherJob {
   upstream_index: UpstreamIndex,
-  lcs_sink: Box<LcsRepositorySink>,
   lcs_source: Box<LcsRepositorySource>,
+  lcs_sink: Box<LcsRepositorySink>,
   #[builder(default)]
   params: LcsFetcherParams,
 }
-
-impl Default for LcsFetcherJob {
-  fn default() -> LcsFetcherJob {
-    LcsFetcherJob {
-      upstream_index: UpstreamIndex::default(),
-      lcs_sink: Box::new(S3LcsRepository::default()),
-      lcs_source: Box::new(HttpLcsRepository::default()),
-      params: LcsFetcherParams::default(),
-    }
-  }
-}
-
 
 #[derive(Clone, Builder)]
 #[builder(default)]
@@ -73,6 +62,24 @@ define_from_error_boilerplate!(hyper::Error, LcsFetchErr, LcsFetchErr::HyperErr)
 define_from_error_boilerplate!(S3Error, LcsFetchErr, LcsFetchErr::S3Err);
 
 impl LcsFetcherJob {
+  pub fn from_crates_io_to_s3() -> LcsFetcherJob {
+    LcsFetcherJobBuilder::default()
+      .upstream_index(UpstreamIndex::default())
+      .lcs_source(Box::new(HttpLcsRepository::default()))
+      .lcs_sink(Box::new(S3LcsRepository::default()))
+      .build()
+      .unwrap()
+  }
+
+  pub fn from_crates_io_to_cwd() -> LcsFetcherJob {
+    LcsFetcherJobBuilder::default()
+      .upstream_index(UpstreamIndex::default())
+      .lcs_source(Box::new(HttpLcsRepository::default()))
+      .lcs_sink(Box::new(LocalFsLcsRepository::from_cwd().unwrap()))
+      .build()
+      .unwrap()
+  }
+
   fn run_now(&mut self) -> Result<(), LcsFetchErr> {
     let existing_crate_keys = self.lcs_sink.get_existing_crate_keys()
       .unwrap()

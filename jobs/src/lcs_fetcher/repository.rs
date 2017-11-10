@@ -94,6 +94,17 @@ impl LocalFsLcsRepository {
     })
   }
 
+  pub fn from_cwd() -> Result<LocalFsLcsRepository, LcsFetchErr> {
+    let cwd = try!(::std::env::current_dir());
+    let index_path = cwd.join("index.txt");
+    let _ = File::create(index_path);
+
+    Ok(LocalFsLcsRepository {
+      crates_path: cwd,
+      backing_tmpdir: Arc::new(None),
+    })
+  }
+
   /** Returns the path to the index file for this LCS */
   fn get_index_path(&self) -> PathBuf {
     self.crates_path.join("index.txt")
