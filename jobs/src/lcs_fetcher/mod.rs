@@ -21,13 +21,18 @@ mod flags {
 
 mod repository;
 
-/** A Job that syncs crate artifacts from upstream Crates.io to a LCS Repository */
+/**
+ * A Job that syncs crate artifacts from upstream Crates.io to a LCS Repository.
+ *
+ * This does not derive the builder from Default because the default dependencies (such as S3),
+ * must not be eagerly evaluated.
+ */
 #[derive(Builder)]
-#[builder(default)]
 pub struct LcsFetcherJob {
   upstream_index: UpstreamIndex,
   lcs_sink: Box<LcsRepositorySink>,
   lcs_source: Box<LcsRepositorySource>,
+  #[builder(default)]
   params: LcsFetcherParams,
 }
 
@@ -87,6 +92,7 @@ impl LcsFetcherJob {
     let crate_tempdir_path = crate_tempdir.path();
 
     for key_to_backfill in keys_to_backfill.into_iter() {
+      info!("Downloading {:?}", key_to_backfill);
       try!(self.lcs_source.fetch_crate(&key_to_backfill, &crate_tempdir_path));
 
       let expected_file_path: PathBuf =
@@ -97,6 +103,7 @@ impl LcsFetcherJob {
         .expect(&format!("upstream crate source failed to download {:?}", expected_file_path));
 
 
+      info!("Uploading {:?} from {:?} to upstream sink.", key_to_backfill, expected_file_path);
       self.lcs_sink.upload_crate(&key_to_backfill, &expected_file_path).unwrap();
 
       // Minor optimization -- remove file early if possible
@@ -115,7 +122,60 @@ impl Job for LcsFetcherJob {
 
 #[cfg(test)]
 mod tests {
+  use common::cargo::CrateKey;
+  use index::UpstreamIndex;
+  use index::UpstreamIndexParamsBuilder;
+  use index;
+  use lcs_fetcher::LcsFetcherJobBuilder;
+  use lcs_fetcher::LcsFetcherParams;
+  use lcs_fetcher::repository::LcsRepositorySink;
+  use lcs_fetcher::repository::LcsRepositorySource;
+  use lcs_fetcher::repository::LocalFsLcsRepository;
+  use lcs_fetcher::repository::testing::TestingCrate;
+  use std::fs::File;
+  use tempdir::TempDir;
+  use url::Url;
+
   #[test]
-  fn test_fetcher_identifies_missing_crates() {
+  fn test_trivial_fetcher_doesnt_explode() {
+    let mut source_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
+    let mut dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
+    let upstream_index = {
+      let tempdir = index::testing::seed_minimum_index();
+      let params = UpstreamIndexParamsBuilder::default()
+        .pre_pulled_index_path(Some(tempdir.path().to_path_buf()))
+        .build()
+        .unwrap();
+
+      UpstreamIndex::load_from_params(params).unwrap()
+    };
+
+    let mut lcs_fetcher_job =
+      LcsFetcherJobBuilder::default()
+        .upstream_index(upstream_index)
+        .lcs_source(Box::new(source_fs_lcs))
+        .lcs_sink(Box::new(dest_fs_lcs))
+        .build()
+        .unwrap();
+
+    lcs_fetcher_job.run_now();
   }
+
+  /*
+  #[test]
+  fn test_fetcher_downloads_missing_crates() {
+    let mut source_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
+    let mut dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
+    let scratch_dir = TempDir::new("fake_crate_scratch").unwrap();
+    let fake_crate_path = scratch_dir.path().join("fake-crate.crate");
+    File::create(&fake_crate_path).unwrap();
+
+    source_fs_lcs.upload_crate(
+      &CrateKey {
+        name: "crate_1".to_owned(),
+        version: "0.0.1".to_owned(),
+      },
+      &fake_crate_path).unwrap();
+  }
+  */
 }

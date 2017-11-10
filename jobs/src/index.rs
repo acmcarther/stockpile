@@ -29,6 +29,8 @@ mod flags {
 }
 
 /** Defines the params needed to build an UpstreamIndex. */
+#[derive(Builder)]
+#[builder(default)]
 pub struct UpstreamIndexParams {
   url: Url,
   pre_pulled_index_path: Option<PathBuf>,

@@ -73,7 +73,7 @@ impl LocalFsLcsRepository {
    * Please note that the LCS will store crates directly in the directory,
    * which can cause filesystem issues if the crate count grows past a few hundred.
    */
-  fn new(crates_path: PathBuf) -> LocalFsLcsRepository {
+  pub fn new(crates_path: PathBuf) -> LocalFsLcsRepository {
     assert!(crates_path.is_dir());
     LocalFsLcsRepository {
       crates_path: crates_path,
@@ -82,7 +82,7 @@ impl LocalFsLcsRepository {
   }
 
   /** Creates an LCS based out of a temporary directory. */
-  fn from_tmp() -> Result<LocalFsLcsRepository, LcsFetchErr> {
+  pub fn from_tmp() -> Result<LocalFsLcsRepository, LcsFetchErr> {
     let tempdir = try!(TempDir::new("local_fs_lcs_repo"));
     let index_path =
       tempdir.path().join("index.txt");
@@ -97,6 +97,46 @@ impl LocalFsLcsRepository {
   /** Returns the path to the index file for this LCS */
   fn get_index_path(&self) -> PathBuf {
     self.crates_path.join("index.txt")
+  }
+
+  /**
+   * Constructs filesystem-safe directory path for the given crate name.
+   *
+   * If the crate name is one character, the path is 1/$CRATE_NAME
+   * If the crate name is two characters, the path is 2/$CRATE_NAME
+   * If the crate name is three characters, the path is 3/$CRATE_NAME
+   * If the crate name is four or more characters, the path is
+   *   $FIRST_TWO_CHARS/$NEXT_TWO_CHARS/
+   */
+  fn get_directory_for_crate(crate_name: &str) -> PathBuf {
+    match crate_name.len() {
+      0 => panic!("Can't generate a path for an empty string"),
+      1 => PathBuf::from("1/"),
+      2 => PathBuf::from("2/"),
+      3 => PathBuf::from("3/"),
+      _ => PathBuf::from(format!("{}/{}/",
+                                 crate_name[0..2].to_owned(),
+                                 crate_name[2..4].to_owned())),
+    }
+  }
+
+}
+
+impl LcsRepositorySource for LocalFsLcsRepository {
+  /** Fetches the crate from the local file system, if available. */
+  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr> {
+    let crate_filename = format!("{name}-{version}.crate",
+                                 name = key.name,
+                                 version = key.version);
+    let crate_subdirectory = LocalFsLcsRepository::get_directory_for_crate(&key.name);
+    let crate_path = self.crates_path
+      .join(crate_subdirectory)
+      .join(&crate_filename);
+
+    let destination_crate = destination.join(crate_filename);
+
+    try!(fs::copy(crate_path, destination_crate));
+    Ok(())
   }
 }
 
@@ -126,9 +166,13 @@ impl LcsRepositorySink for LocalFsLcsRepository {
     let crate_filename = format!("{name}-{version}.crate",
                                  name = key.name,
                                  version = key.version);
+    let crate_subdirectory = LocalFsLcsRepository::get_directory_for_crate(&key.name);
     let index_path = self.crates_path.join("index.txt");
-    let crate_path = self.crates_path.join(&crate_filename);
+    let crate_path = self.crates_path
+      .join(crate_subdirectory)
+      .join(&crate_filename);
 
+    try!(fs::create_dir_all(crate_path.parent().unwrap()));
     try!(fs::copy(path, crate_path));
 
     let mut index_file = try!(OpenOptions::new()
@@ -256,7 +300,7 @@ impl LcsRepositorySource for HttpLcsRepository {
   }
 }
 
-mod testing {
+pub mod testing {
   use super::*;
   use tempdir::TempDir;
 
@@ -303,12 +347,13 @@ mod tests {
 
     #[test]
     fn test_seeded_fs_contains_expected_crates() {
+      let crate_key = CrateKey {
+        name: "example".to_owned(),
+        version: "1.0.0".to_owned(),
+      };
       let testing_crates = vec![
         TestingCrate {
-          key: CrateKey {
-            name: "example".to_owned(),
-            version: "1.0.0".to_owned(),
-          },
+          key: crate_key.clone(),
           contents: b"CrateTarContents".to_vec()
         }
       ];
@@ -317,12 +362,18 @@ mod tests {
       let get_res = lfs_lcs_repo.get_existing_crate_keys();
 
       assert!(get_res.is_ok());
-      assert_eq!(get_res.unwrap(), vec![CrateKey {
-        name: "example".to_owned(),
-        version: "1.0.0".to_owned(),
-      }]);
-    }
+      assert_eq!(get_res.unwrap(), vec![crate_key.clone()]);
 
+      let temp_dest = TempDir::new("test_output_dir").unwrap();
+
+      lfs_lcs_repo.fetch_crate(&crate_key, temp_dest.path()).unwrap();
+
+      let mut message = String::new();
+      let mut file = File::open(temp_dest.path().join("example-1.0.0.crate")).unwrap();
+      file.read_to_string(&mut message);
+
+      assert_eq!(message, "CrateTarContents".to_owned());
+    }
   }
 
   mod http {
