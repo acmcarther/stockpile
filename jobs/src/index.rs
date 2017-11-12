@@ -4,6 +4,8 @@ use common::iter_util;
 use git2::Repository;
 use git2;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json;
 use std::collections::HashMap;
 use std::fs::File;
@@ -28,91 +30,57 @@ mod flags {
                   "The path to the crates.io index to use in lieu of pulling a fresh copy.");
 }
 
-/** Defines the params needed to build an UpstreamIndex. */
+/** Defines the params needed to build an GenericIndex. */
 #[derive(Builder)]
-#[builder(default)]
-pub struct UpstreamIndexParams {
+pub struct GenericIndexParams {
   url: Url,
   pre_pulled_index_path: Option<PathBuf>,
 }
 
-impl Default for UpstreamIndexParams {
-  /** Constructs an UpstreamIndexParams from flags. */
-  fn default() -> UpstreamIndexParams {
+impl GenericIndexParams {
+  /** Constructs an GenericIndexParams from flags. */
+  fn crates_io_index_params() -> GenericIndexParams {
     let url = Url::parse(&flags::crates_io_index_url::CONFIG.get_value()).unwrap();
     let pre_pulled_index_path = flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner()
       .map(PathBuf::from);
 
-    UpstreamIndexParams {
+    GenericIndexParams {
       url: url,
       pre_pulled_index_path: pre_pulled_index_path,
     }
   }
 }
 
-/** The crates.io-index containing original Crate metadata. */
+/** A structured index object of the same form as the Crates.io index.*/
 #[derive(Clone)]
-pub struct UpstreamIndex {
-  crates_io_index_repo: Arc<Repository>,
-  crates_io_index: HashMap<String, Vec<cargo::IndexEntry>>,
+pub struct GenericIndex<T: Serialize + DeserializeOwned + Send> {
+  repository: Arc<Repository>,
+  in_memory_index: HashMap<String, Vec<T>>,
   tempdir: Arc<Option<TempDir>>
 }
 
-/** The set of possible errors that may occur while using an UpstreamIndex. */
+/** The set of possible errors that may occur while using an GenericIndex. */
 #[derive(Debug)]
-pub enum UpstreamIndexErr {
+pub enum GenericIndexErr {
   InvalidCacheState(String),
   GitErr(git2::Error),
   IoErr(io::Error),
   SerdeJsonErr(serde_json::Error),
 }
-define_from_error_boilerplate!(String, UpstreamIndexErr, UpstreamIndexErr::InvalidCacheState);
-define_from_error_boilerplate!(git2::Error, UpstreamIndexErr, UpstreamIndexErr::GitErr);
-define_from_error_boilerplate!(io::Error, UpstreamIndexErr, UpstreamIndexErr::IoErr);
-define_from_error_boilerplate!(serde_json::Error, UpstreamIndexErr, UpstreamIndexErr::SerdeJsonErr);
+define_from_error_boilerplate!(String, GenericIndexErr, GenericIndexErr::InvalidCacheState);
+define_from_error_boilerplate!(git2::Error, GenericIndexErr, GenericIndexErr::GitErr);
+define_from_error_boilerplate!(io::Error, GenericIndexErr, GenericIndexErr::IoErr);
+define_from_error_boilerplate!(serde_json::Error, GenericIndexErr, GenericIndexErr::SerdeJsonErr);
 
-impl Default for UpstreamIndex {
-  /** Builds an UpstreamIndex from flags. */
-  fn default() -> UpstreamIndex {
-    UpstreamIndex::load_from_params(UpstreamIndexParams::default()).unwrap()
-  }
-}
-
-impl UpstreamIndex {
-  /**
-   * Constructs an UpstreamIndex from the provided arguments.
-   *
-   * If a pre_pulled_index_path is provided, it is loaded directly. Otherwise, the index is pulled
-   * into a temporary directory and loaded.
-   */
-  pub fn load_from_params(params: UpstreamIndexParams) -> Result<UpstreamIndex, UpstreamIndexErr> {
-    if params.pre_pulled_index_path.is_some() {
-      let path = PathBuf::from(params.pre_pulled_index_path.unwrap());
-      debug!("Loading Index from {:?}", path);
-      let repo = try!(Repository::open(&path));
-      let crates_io_index = try!(UpstreamIndex::load_crates_io_index(path));
-      Ok(UpstreamIndex {
-        crates_io_index_repo: Arc::new(repo),
-        crates_io_index: crates_io_index.into_iter().collect(),
-        tempdir: Arc::new(None),
-      })
-    } else {
-      debug!("Creating temp dir for upstream crates io index");
-      let dir = try!(TempDir::new("upstream_crates_io_index"));
-      debug!("Cloning upstream crates io index from {}, into {:?}", params.url, dir.path());
-      let repo = try!(Repository::clone(&params.url.to_string(), &dir));
-      let crates_io_index = try!(UpstreamIndex::load_crates_io_index(dir.path()));
-      Ok(UpstreamIndex {
-        crates_io_index_repo: Arc::new(repo),
-        tempdir: Arc::new(Some(dir)),
-        crates_io_index: crates_io_index.into_iter().collect(),
-      })
-    }
+impl GenericIndex<cargo::IndexEntry> {
+  /** Builds a Crates.io GenericIndex from flags. */
+  pub fn crates_io_index() -> GenericIndex<cargo::IndexEntry> {
+    GenericIndex::load_from_params(GenericIndexParams::crates_io_index_params()).unwrap()
   }
 
   /** Retrieves all known CrateKey objects from the index. */
   pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
-    self.crates_io_index.values()
+    self.in_memory_index.values()
       .flat_map(|v| v.iter())
       .map(|index_entry| CrateKey {
         name: index_entry.name.clone(),
@@ -120,13 +88,46 @@ impl UpstreamIndex {
       })
       .collect()
   }
+}
+
+impl <T: Serialize + DeserializeOwned + Send> GenericIndex<T> {
+  /**
+   * Constructs an GenericIndex from the provided arguments.
+   *
+   * If a pre_pulled_index_path is provided, it is loaded directly. Otherwise, the index is pulled
+   * into a temporary directory and loaded.
+   */
+  pub fn load_from_params(params: GenericIndexParams) -> Result<GenericIndex<T>, GenericIndexErr> {
+    if params.pre_pulled_index_path.is_some() {
+      let path = PathBuf::from(params.pre_pulled_index_path.unwrap());
+      debug!("Loading Index from {:?}", path);
+      let repo = try!(Repository::open(&path));
+      let in_memory_index = try!(GenericIndex::load_in_memory_index(path));
+      Ok(GenericIndex {
+        repository: Arc::new(repo),
+        in_memory_index: in_memory_index.into_iter().collect(),
+        tempdir: Arc::new(None),
+      })
+    } else {
+      debug!("Creating temp dir for upstream crates io index");
+      let dir = try!(TempDir::new("upstream_in_memory_index"));
+      debug!("Cloning upstream crates io index from {}, into {:?}", params.url, dir.path());
+      let repo = try!(Repository::clone(&params.url.to_string(), &dir));
+      let in_memory_index = try!(GenericIndex::load_in_memory_index(dir.path()));
+      Ok(GenericIndex {
+        repository: Arc::new(repo),
+        tempdir: Arc::new(Some(dir)),
+        in_memory_index: in_memory_index.into_iter().collect(),
+      })
+    }
+  }
 
   /** Loads the Crates.io Index into memory, ready for use. */
-  fn load_crates_io_index<P: AsRef<Path>>(crates_io_index_dir: P) -> Result<Vec<(String, Vec<cargo::IndexEntry>)>, UpstreamIndexErr> {
-    debug!("Loading crates.io-index from {:?}", crates_io_index_dir.as_ref());
+  fn load_in_memory_index<P: AsRef<Path>>(in_memory_index_dir: P) -> Result<Vec<(String, Vec<T>)>, GenericIndexErr> {
+    debug!("Loading crates.io-index from {:?}", in_memory_index_dir.as_ref());
     let mut dir_iters = Vec::new();
     let mut leaves = Vec::new();
-    dir_iters.push(try!(fs::read_dir(&crates_io_index_dir)));
+    dir_iters.push(try!(fs::read_dir(&in_memory_index_dir)));
     while !dir_iters.is_empty() {
       let dir_iter = dir_iters.pop().unwrap();
       for entry_res in dir_iter {
@@ -164,7 +165,7 @@ impl UpstreamIndex {
         try!(File::open(leaf)
           .and_then(|mut f| f.read_to_string(&mut contents)));
         for line in contents.lines() {
-          index_entries.push(try!(serde_json::from_str::<cargo::IndexEntry>(&line)))
+          index_entries.push(try!(serde_json::from_str::<T>(&line)))
         }
 
         Ok(vec![(path, index_entries)])
@@ -252,12 +253,12 @@ mod tests {
   #[test]
   fn test_empty_local_index_works() {
     let tempdir = testing::seed_minimum_index();
-    let params = UpstreamIndexParams {
+    let params = GenericIndexParams {
       url: Url::parse("http://not-resolvable").unwrap(),
       pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
     };
 
-    let upstream_index = UpstreamIndex::load_from_params(params).unwrap();
+    let upstream_index = GenericIndex::load_from_params(params).unwrap();
 
     assert_eq!(upstream_index.get_all_crate_keys(),
                Vec::new());
@@ -275,12 +276,12 @@ mod tests {
       };
     let tempdir = testing::seed_index_with_crates(vec![index_entry]);
 
-    let params = UpstreamIndexParams {
+    let params = GenericIndexParams {
       url: Url::parse("http://not-resolvable").unwrap(),
       pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
     };
 
-    let upstream_index = UpstreamIndex::load_from_params(params).unwrap();
+    let upstream_index = GenericIndex::load_from_params(params).unwrap();
 
     assert_eq!(upstream_index.get_all_crate_keys(),
                vec![CrateKey {
