@@ -4,6 +4,8 @@ use common::iter_util;
 use git2::Repository;
 use git2;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json;
 use std::collections::HashMap;
 use std::fs::File;
@@ -52,9 +54,9 @@ impl Default for UpstreamIndexParams {
 
 /** The crates.io-index containing original Crate metadata. */
 #[derive(Clone)]
-pub struct UpstreamIndex {
+pub struct UpstreamIndex<T: Serialize + DeserializeOwned + Send> {
   crates_io_index_repo: Arc<Repository>,
-  crates_io_index: HashMap<String, Vec<cargo::IndexEntry>>,
+  crates_io_index: HashMap<String, Vec<T>>,
   tempdir: Arc<Option<TempDir>>
 }
 
@@ -71,21 +73,34 @@ define_from_error_boilerplate!(git2::Error, UpstreamIndexErr, UpstreamIndexErr::
 define_from_error_boilerplate!(io::Error, UpstreamIndexErr, UpstreamIndexErr::IoErr);
 define_from_error_boilerplate!(serde_json::Error, UpstreamIndexErr, UpstreamIndexErr::SerdeJsonErr);
 
-impl Default for UpstreamIndex {
+impl <T: Serialize + DeserializeOwned + Send> Default for UpstreamIndex<T> {
   /** Builds an UpstreamIndex from flags. */
-  fn default() -> UpstreamIndex {
+  fn default() -> UpstreamIndex<T> {
     UpstreamIndex::load_from_params(UpstreamIndexParams::default()).unwrap()
   }
 }
 
-impl UpstreamIndex {
+impl UpstreamIndex<cargo::IndexEntry> {
+  /** Retrieves all known CrateKey objects from the index. */
+  pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
+    self.crates_io_index.values()
+      .flat_map(|v| v.iter())
+      .map(|index_entry| CrateKey {
+        name: index_entry.name.clone(),
+        version: index_entry.vers.clone()
+      })
+      .collect()
+  }
+}
+
+impl <T: Serialize + DeserializeOwned + Send> UpstreamIndex<T> {
   /**
    * Constructs an UpstreamIndex from the provided arguments.
    *
    * If a pre_pulled_index_path is provided, it is loaded directly. Otherwise, the index is pulled
    * into a temporary directory and loaded.
    */
-  pub fn load_from_params(params: UpstreamIndexParams) -> Result<UpstreamIndex, UpstreamIndexErr> {
+  pub fn load_from_params(params: UpstreamIndexParams) -> Result<UpstreamIndex<T>, UpstreamIndexErr> {
     if params.pre_pulled_index_path.is_some() {
       let path = PathBuf::from(params.pre_pulled_index_path.unwrap());
       debug!("Loading Index from {:?}", path);
@@ -110,19 +125,8 @@ impl UpstreamIndex {
     }
   }
 
-  /** Retrieves all known CrateKey objects from the index. */
-  pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
-    self.crates_io_index.values()
-      .flat_map(|v| v.iter())
-      .map(|index_entry| CrateKey {
-        name: index_entry.name.clone(),
-        version: index_entry.vers.clone()
-      })
-      .collect()
-  }
-
   /** Loads the Crates.io Index into memory, ready for use. */
-  fn load_crates_io_index<P: AsRef<Path>>(crates_io_index_dir: P) -> Result<Vec<(String, Vec<cargo::IndexEntry>)>, UpstreamIndexErr> {
+  fn load_crates_io_index<P: AsRef<Path>>(crates_io_index_dir: P) -> Result<Vec<(String, Vec<T>)>, UpstreamIndexErr> {
     debug!("Loading crates.io-index from {:?}", crates_io_index_dir.as_ref());
     let mut dir_iters = Vec::new();
     let mut leaves = Vec::new();
@@ -164,7 +168,7 @@ impl UpstreamIndex {
         try!(File::open(leaf)
           .and_then(|mut f| f.read_to_string(&mut contents)));
         for line in contents.lines() {
-          index_entries.push(try!(serde_json::from_str::<cargo::IndexEntry>(&line)))
+          index_entries.push(try!(serde_json::from_str::<T>(&line)))
         }
 
         Ok(vec![(path, index_entries)])

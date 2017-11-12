@@ -1,4 +1,5 @@
 use tempdir::TempDir;
+use common::cargo;
 use index::UpstreamIndex;
 use super::Job;
 use std::fs;
@@ -30,7 +31,7 @@ mod repository;
  */
 #[derive(Builder)]
 pub struct LcsFetcherJob {
-  upstream_index: UpstreamIndex,
+  upstream_index: UpstreamIndex<cargo::IndexEntry>,
   lcs_source: Box<LcsRepositorySource>,
   lcs_sink: Box<LcsRepositorySink>,
   #[builder(default)]
