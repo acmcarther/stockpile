@@ -1,6 +1,6 @@
 use tempdir::TempDir;
 use common::cargo;
-use index::UpstreamIndex;
+use index::GenericIndex;
 use super::Job;
 use std::fs;
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ mod repository;
  */
 #[derive(Builder)]
 pub struct LcsFetcherJob {
-  upstream_index: UpstreamIndex<cargo::IndexEntry>,
+  upstream_index: GenericIndex<cargo::IndexEntry>,
   lcs_source: Box<LcsRepositorySource>,
   lcs_sink: Box<LcsRepositorySink>,
   #[builder(default)]
@@ -65,7 +65,7 @@ define_from_error_boilerplate!(S3Error, LcsFetchErr, LcsFetchErr::S3Err);
 impl LcsFetcherJob {
   pub fn from_crates_io_to_s3() -> LcsFetcherJob {
     LcsFetcherJobBuilder::default()
-      .upstream_index(UpstreamIndex::default())
+      .upstream_index(GenericIndex::default())
       .lcs_source(Box::new(HttpLcsRepository::default()))
       .lcs_sink(Box::new(S3LcsRepository::default()))
       .build()
@@ -74,7 +74,7 @@ impl LcsFetcherJob {
 
   pub fn from_crates_io_to_cwd() -> LcsFetcherJob {
     LcsFetcherJobBuilder::default()
-      .upstream_index(UpstreamIndex::default())
+      .upstream_index(GenericIndex::default())
       .lcs_source(Box::new(HttpLcsRepository::default()))
       .lcs_sink(Box::new(LocalFsLcsRepository::from_cwd().unwrap()))
       .build()
@@ -133,8 +133,8 @@ impl Job for LcsFetcherJob {
 
 #[cfg(test)]
 mod tests {
-  use index::UpstreamIndex;
-  use index::UpstreamIndexParamsBuilder;
+  use index::GenericIndex;
+  use index::GenericIndexParamsBuilder;
   use index;
   use lcs_fetcher::LcsFetcherJobBuilder;
   use lcs_fetcher::repository::LocalFsLcsRepository;
@@ -145,12 +145,12 @@ mod tests {
     let dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
     let upstream_index = {
       let tempdir = index::testing::seed_minimum_index();
-      let params = UpstreamIndexParamsBuilder::default()
+      let params = GenericIndexParamsBuilder::default()
         .pre_pulled_index_path(Some(tempdir.path().to_path_buf()))
         .build()
         .unwrap();
 
-      UpstreamIndex::load_from_params(params).unwrap()
+      GenericIndex::load_from_params(params).unwrap()
     };
 
     let mut lcs_fetcher_job =
