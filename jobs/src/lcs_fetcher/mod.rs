@@ -136,6 +136,8 @@ mod tests {
   use index::GenericIndex;
   use index::GenericIndexParamsBuilder;
   use index;
+  use url::Url;
+  use std::str::FromStr;
   use lcs_fetcher::LcsFetcherJobBuilder;
   use lcs_fetcher::repository::LocalFsLcsRepository;
 
@@ -146,6 +148,7 @@ mod tests {
     let upstream_index = {
       let tempdir = index::testing::seed_minimum_index();
       let params = GenericIndexParamsBuilder::default()
+        .url(Url::from_str("http://invalid-url").unwrap())
         .pre_pulled_index_path(Some(tempdir.path().to_path_buf()))
         .build()
         .unwrap();

@@ -19,12 +19,12 @@ use tempdir::TempDir;
 use url::Url;
 
 mod flags {
-  define_pub_cfg!(in_memory_index_url,
+  define_pub_cfg!(crates_io_index_url,
                   String,
                   "https://github.com/rust-lang/crates.io-index",
                   "The URL for the upstream crates.io index repository");
 
-  define_pub_cfg!(pre_pulled_in_memory_index_directory,
+  define_pub_cfg!(pre_pulled_crates_io_index_directory,
                   ::zcfg::NoneableCfg<String>,
                   None,
                   "The path to the crates.io index to use in lieu of pulling a fresh copy.");
@@ -32,17 +32,16 @@ mod flags {
 
 /** Defines the params needed to build an GenericIndex. */
 #[derive(Builder)]
-#[builder(default)]
 pub struct GenericIndexParams {
   url: Url,
   pre_pulled_index_path: Option<PathBuf>,
 }
 
-impl Default for GenericIndexParams {
+impl GenericIndexParams {
   /** Constructs an GenericIndexParams from flags. */
-  fn default() -> GenericIndexParams {
-    let url = Url::parse(&flags::in_memory_index_url::CONFIG.get_value()).unwrap();
-    let pre_pulled_index_path = flags::pre_pulled_in_memory_index_directory::CONFIG.get_value().inner()
+  fn crates_io_index_params() -> GenericIndexParams {
+    let url = Url::parse(&flags::crates_io_index_url::CONFIG.get_value()).unwrap();
+    let pre_pulled_index_path = flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner()
       .map(PathBuf::from);
 
     GenericIndexParams {
@@ -73,10 +72,10 @@ define_from_error_boilerplate!(git2::Error, GenericIndexErr, GenericIndexErr::Gi
 define_from_error_boilerplate!(io::Error, GenericIndexErr, GenericIndexErr::IoErr);
 define_from_error_boilerplate!(serde_json::Error, GenericIndexErr, GenericIndexErr::SerdeJsonErr);
 
-impl <T: Serialize + DeserializeOwned + Send> Default for GenericIndex<T> {
+impl Default for GenericIndex<cargo::IndexEntry> {
   /** Builds an GenericIndex from flags. */
-  fn default() -> GenericIndex<T> {
-    GenericIndex::load_from_params(GenericIndexParams::default()).unwrap()
+  fn default() -> GenericIndex<cargo::IndexEntry> {
+    GenericIndex::load_from_params(GenericIndexParams::crates_io_index_params()).unwrap()
   }
 }
 
