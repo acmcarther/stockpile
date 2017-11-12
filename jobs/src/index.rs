@@ -72,14 +72,12 @@ define_from_error_boilerplate!(git2::Error, GenericIndexErr, GenericIndexErr::Gi
 define_from_error_boilerplate!(io::Error, GenericIndexErr, GenericIndexErr::IoErr);
 define_from_error_boilerplate!(serde_json::Error, GenericIndexErr, GenericIndexErr::SerdeJsonErr);
 
-impl Default for GenericIndex<cargo::IndexEntry> {
-  /** Builds an GenericIndex from flags. */
-  fn default() -> GenericIndex<cargo::IndexEntry> {
+impl GenericIndex<cargo::IndexEntry> {
+  /** Builds a Crates.io GenericIndex from flags. */
+  pub fn crates_io_index() -> GenericIndex<cargo::IndexEntry> {
     GenericIndex::load_from_params(GenericIndexParams::crates_io_index_params()).unwrap()
   }
-}
 
-impl GenericIndex<cargo::IndexEntry> {
   /** Retrieves all known CrateKey objects from the index. */
   pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
     self.in_memory_index.values()

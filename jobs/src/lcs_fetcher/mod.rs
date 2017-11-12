@@ -65,7 +65,7 @@ define_from_error_boilerplate!(S3Error, LcsFetchErr, LcsFetchErr::S3Err);
 impl LcsFetcherJob {
   pub fn from_crates_io_to_s3() -> LcsFetcherJob {
     LcsFetcherJobBuilder::default()
-      .upstream_index(GenericIndex::default())
+      .upstream_index(GenericIndex::crates_io_index())
       .lcs_source(Box::new(HttpLcsRepository::default()))
       .lcs_sink(Box::new(S3LcsRepository::default()))
       .build()
@@ -74,7 +74,7 @@ impl LcsFetcherJob {
 
   pub fn from_crates_io_to_cwd() -> LcsFetcherJob {
     LcsFetcherJobBuilder::default()
-      .upstream_index(GenericIndex::default())
+      .upstream_index(GenericIndex::crates_io_index())
       .lcs_source(Box::new(HttpLcsRepository::default()))
       .lcs_sink(Box::new(LocalFsLcsRepository::from_cwd().unwrap()))
       .build()
