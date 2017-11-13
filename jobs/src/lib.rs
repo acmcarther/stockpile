@@ -1,5 +1,9 @@
 #![feature(used)]
 #![allow(dead_code)]
+extern crate cargo;
+extern crate flate2;
+extern crate toml;
+extern crate tar;
 extern crate aws_sdk_rust;
 #[macro_use] extern crate common;
 extern crate git2;
@@ -30,6 +34,8 @@ pub enum JobErr {
   SerdeJsonErr(serde_json::Error),
   S3Err(S3Error),
   GitErr(git2::Error),
+  TomlErr(toml::de::Error),
+  OtherErr(String),
   UnsupportedOperation,
 }
 define_from_error_boilerplate!(io::Error, JobErr, JobErr::IoErr);
@@ -37,6 +43,7 @@ define_from_error_boilerplate!(hyper::Error, JobErr, JobErr::HyperErr);
 define_from_error_boilerplate!(serde_json::Error, JobErr, JobErr::SerdeJsonErr);
 define_from_error_boilerplate!(git2::Error, JobErr, JobErr::GitErr);
 define_from_error_boilerplate!(S3Error, JobErr, JobErr::S3Err);
+define_from_error_boilerplate!(toml::de::Error, JobErr, JobErr::TomlErr);
 
 pub trait Job {
   fn run(&mut self);

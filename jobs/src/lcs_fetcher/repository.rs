@@ -178,7 +178,6 @@ impl LcsRepositorySource for LocalFsLcsRepository {
   }
 }
 
-
 impl LcsRepositorySink for LocalFsLcsRepository {
   /** Inserts a crate into the local directory, and appends it into the index. */
   fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result <(), JobErr> {
@@ -203,7 +202,6 @@ impl LcsRepositorySink for LocalFsLcsRepository {
                                  name = key.name,
                                  version = key.version).as_bytes()));
     Ok(())
-
   }
 }
 
