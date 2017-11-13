@@ -110,51 +110,34 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
-  /*
+  use std::collections::HashMap;
+  use common::cargo;
   use url::Url;
-  use index;
+  use index::crates_io;
+  use index::KeyedByCrateKey;
 
   #[test]
   fn test_empty_local_index_works() {
-    let tempdir = index::testing::seed_minimum_index();
-    let params = GenericIndexParams {
-      url: Url::parse("http://not-resolvable").unwrap(),
-      pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
-    };
-
-    let upstream_index: GenericIndex<cargo::IndexEntry> =
-      GenericIndex::load_from_params(params).unwrap();
-
-    assert_eq!(upstream_index.get_all_crate_keys(),
-               Vec::new());
+    let index = crates_io::testing::get_minimum_index();
+    assert_eq!(index.get_crate_keys(), Vec::<&cargo::CrateKey>::new());
   }
 
   #[test]
   fn test_loads_trivial_index() {
-      let index_entry = IndexEntry {
-        name: "a".to_owned(),
-        vers: "0.0.1".to_owned(),
-        deps: Vec::new(),
-        cksum: "111".to_owned(),
-        features: HashMap::new(),
-        yanked: None,
-      };
-    let tempdir = index::crates_io::testing::seed_index_with_contents(vec![index_entry]);
-
-    let params = CratesIoIndexParams {
-      generic_params: GenericIndexParams {
-        url: Url::parse("http://not-resolvable").unwrap(),
-        pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
-      }
+    let index_entry = cargo::IndexEntry {
+      name: "a".to_owned(),
+      vers: "0.0.1".to_owned(),
+      deps: Vec::new(),
+      cksum: "111".to_owned(),
+      features: HashMap::new(),
+      yanked: None,
     };
+    let index = crates_io::testing::get_seeded_index(vec![index_entry]);
 
-    let index = CratesIoIndex::new(params).unwrap();
-
-    assert_eq!(upstream_index.get_all_crate_keys(),
-               vec![CrateKey {
+    assert_eq!(index.get_crate_keys(),
+               vec![&cargo::CrateKey {
                  name: "a".to_owned(),
                  version: "0.0.1".to_owned()
                }]);
   }
-  */
 }

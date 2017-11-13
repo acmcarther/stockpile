@@ -27,7 +27,6 @@ pub struct AugmentedIndexParams {
 }
 
 impl AugmentedIndexParams {
-
   /** Provideds a default set of parameters based on binary flags. */
   pub fn upstream_index() -> AugmentedIndexParams {
     let url = Url::parse(&flags::augmented_index_url::CONFIG.get_value()).unwrap();
@@ -108,3 +107,33 @@ pub mod testing {
   }
 }
 
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+  use common::cargo;
+  use url::Url;
+  use index::augmented;
+  use index::KeyedByCrateKey;
+
+  #[test]
+  fn test_empty_local_index_works() {
+    let index = augmented::testing::get_minimum_index();
+    assert_eq!(index.get_crate_keys(), Vec::<&cargo::CrateKey>::new());
+  }
+
+  #[test]
+  fn test_loads_trivial_index() {
+    let index_entry = cargo::AugmentedIndexEntry {
+      name: "a".to_owned(),
+      vers: "0.0.1".to_owned(),
+      dev_dependencies: Some(Vec::new()),
+    };
+    let index = augmented::testing::get_seeded_index(vec![index_entry]);
+
+    assert_eq!(index.get_crate_keys(),
+               vec![&cargo::CrateKey {
+                 name: "a".to_owned(),
+                 version: "0.0.1".to_owned()
+               }]);
+  }
+}

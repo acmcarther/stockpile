@@ -125,9 +125,15 @@ impl Job for LcsFetcherJob {
 
 #[cfg(test)]
 mod tests {
+  use std::collections::HashMap;
+  use common::cargo;
   use index::crates_io;
+  use tempdir::TempDir;
   use lcs_fetcher::LcsFetcherJobBuilder;
+  use lcs_fetcher::repository::LcsBase;
   use lcs_fetcher::repository::LocalFsLcsRepository;
+  use lcs_fetcher::repository::testing::TestingCrate;
+  use lcs_fetcher::repository;
 
   #[test]
   fn test_trivial_fetcher_doesnt_explode() {
@@ -143,5 +149,49 @@ mod tests {
         .unwrap();
 
     lcs_fetcher_job.run_now().unwrap();
+  }
+
+  #[test]
+  fn test_fetcher_copies_crates_from_source_into_dest() {
+    let test_crates = vec![
+      TestingCrate {
+        key: cargo::CrateKey {
+          name: "test".to_owned(),
+          version: "0.0.0".to_owned(),
+        },
+        contents: b"hello crate".to_vec(),
+      }
+    ];
+    let source_fs_lcs = repository::testing::create_localfs_for_testing(&test_crates).unwrap();
+    let dest_temp_dir = TempDir::new("test_destination").unwrap();
+    let dest_fs_lcs = LocalFsLcsRepository::new(dest_temp_dir.path());
+    let index = crates_io::testing::get_seeded_index(vec![
+      cargo::IndexEntry {
+        name: "test".to_owned(),
+        vers: "0.0.0".to_owned(),
+        deps: Vec::new(),
+        cksum: "111".to_owned(),
+        features: HashMap::new(),
+        yanked: None,
+      }
+    ]);
+
+    let mut lcs_fetcher_job =
+      LcsFetcherJobBuilder::default()
+        .upstream_index(index)
+        .lcs_source(Box::new(source_fs_lcs))
+        .lcs_sink(Box::new(dest_fs_lcs))
+        .build()
+        .unwrap();
+
+    lcs_fetcher_job.run_now().unwrap();
+
+    let dest_fs_lcs = LocalFsLcsRepository::new(dest_temp_dir.path());
+    assert_eq!(dest_fs_lcs.get_existing_crate_keys().unwrap(), vec![
+      cargo::CrateKey {
+        name: "test".to_owned(),
+        version: "0.0.0".to_owned()
+      }
+    ])
   }
 }

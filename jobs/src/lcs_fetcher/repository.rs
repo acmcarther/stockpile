@@ -69,16 +69,12 @@ pub struct LocalFsLcsRepository {
 }
 
 impl LocalFsLcsRepository {
-  /**
-   * Creates an LCS based in the provided directory.
-   *
-   * Please note that the LCS will store crates directly in the directory,
-   * which can cause filesystem issues if the crate count grows past a few hundred.
-   */
-  pub fn new(crates_path: PathBuf) -> LocalFsLcsRepository {
-    assert!(crates_path.is_dir());
+  /** Creates an LCS based in the provided directory.  */
+  pub fn new<P: AsRef<Path>>(crates_path: P) -> LocalFsLcsRepository {
+    let path = crates_path.as_ref().to_path_buf();
+    assert!(path.is_dir());
     LocalFsLcsRepository {
-      crates_path: crates_path,
+      crates_path: path,
       backing_tmpdir: Arc::new(None)
     }
   }
@@ -145,7 +141,11 @@ impl LcsBase for LocalFsLcsRepository {
     let index_path =
       self.crates_path.join("index.txt");
 
-    let mut index_file = try!(File::open(index_path));
+    let mut index_file = try!(OpenOptions::new()
+      .read(true)
+      .write(true)
+      .create(true)
+      .open(index_path));
     let mut contents = String::new();
     try!(index_file.read_to_string(&mut contents));
     let results: Vec<CrateKey> = contents.lines()
