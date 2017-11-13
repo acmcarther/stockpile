@@ -28,6 +28,15 @@ mod flags {
                   ::zcfg::NoneableCfg<String>,
                   None,
                   "The path to the crates.io index to use in lieu of pulling a fresh copy.");
+
+  define_pub_cfg!(augmented_index_url,
+                  String,
+                  "https://github.com/acmcarther/stockpile-index",
+                  "The URL for the upstream stockpile augmented crate index.");
+  define_pub_cfg!(pre_pulled_augmented_index_directory,
+                  ::zcfg::NoneableCfg<String>,
+                  None,
+                  "The path to the augmented index to use in lieu of pulling a fresh copy.");
 }
 
 /** Defines the params needed to build an GenericIndex. */
@@ -42,6 +51,17 @@ impl GenericIndexParams {
   fn crates_io_index_params() -> GenericIndexParams {
     let url = Url::parse(&flags::crates_io_index_url::CONFIG.get_value()).unwrap();
     let pre_pulled_index_path = flags::pre_pulled_crates_io_index_directory::CONFIG.get_value().inner()
+      .map(PathBuf::from);
+
+    GenericIndexParams {
+      url: url,
+      pre_pulled_index_path: pre_pulled_index_path,
+    }
+  }
+
+  fn augmented_index_params() -> GenericIndexParams {
+    let url = Url::parse(&flags::augmented_index_url::CONFIG.get_value()).unwrap();
+    let pre_pulled_index_path = flags::pre_pulled_augmented_index_directory::CONFIG.get_value().inner()
       .map(PathBuf::from);
 
     GenericIndexParams {
@@ -77,18 +97,29 @@ impl GenericIndex<cargo::IndexEntry> {
   pub fn crates_io_index() -> GenericIndex<cargo::IndexEntry> {
     GenericIndex::load_from_params(GenericIndexParams::crates_io_index_params()).unwrap()
   }
+}
 
-  /** Retrieves all known CrateKey objects from the index. */
-  pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
-    self.in_memory_index.values()
-      .flat_map(|v| v.iter())
-      .map(|index_entry| CrateKey {
-        name: index_entry.name.clone(),
-        version: index_entry.vers.clone()
-      })
-      .collect()
+impl GenericIndex<cargo::AugmentedIndexEntry> {
+  /** Builds a Crates.io GenericIndex from flags. */
+  pub fn augmented_index() -> GenericIndex<cargo::AugmentedIndexEntry> {
+    GenericIndex::load_from_params(GenericIndexParams::augmented_index_params()).unwrap()
   }
 }
+
+impl <T: 'static + Serialize + DeserializeOwned + Send + Clone> GenericIndex<T>
+where CrateKey: From<T> {
+  /** Retrieves all known CrateKey objects from the index. */
+  pub fn get_all_crate_keys(&self) -> Vec<CrateKey> {
+    let mut keys: Vec<CrateKey> = Vec::new();
+    for value_set in self.in_memory_index.values() {
+      for value in value_set.iter() {
+        keys.push(CrateKey::from(value.clone()));
+      }
+    }
+    keys
+  }
+}
+
 
 impl <T: Serialize + DeserializeOwned + Send> GenericIndex<T> {
   /**
@@ -258,7 +289,8 @@ mod tests {
       pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
     };
 
-    let upstream_index = GenericIndex::load_from_params(params).unwrap();
+    let upstream_index: GenericIndex<cargo::IndexEntry> =
+      GenericIndex::load_from_params(params).unwrap();
 
     assert_eq!(upstream_index.get_all_crate_keys(),
                Vec::new());
@@ -281,7 +313,8 @@ mod tests {
       pre_pulled_index_path: Some(tempdir.path().to_path_buf()),
     };
 
-    let upstream_index = GenericIndex::load_from_params(params).unwrap();
+    let upstream_index: GenericIndex<cargo::IndexEntry> =
+      GenericIndex::load_from_params(params).unwrap();
 
     assert_eq!(upstream_index.get_all_crate_keys(),
                vec![CrateKey {

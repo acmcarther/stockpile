@@ -21,7 +21,7 @@ mod flags {
                   "The maximum number of crates to download in a single execution of lcs-fetcher.");
 }
 
-mod repository;
+pub mod repository;
 
 /**
  * A Job that syncs crate artifacts from upstream Crates.io to a LCS Repository.
