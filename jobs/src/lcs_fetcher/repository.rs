@@ -4,7 +4,7 @@ use aws_sdk_rust::aws::s3::object::ListObjectsRequest;
 use common::cargo::CrateKey;
 use hyper::Client;
 use hyper::header::Connection;
-use lcs_fetcher::LcsFetchErr;
+use ::JobErr;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::fs;
@@ -38,23 +38,25 @@ mod flags {
                   "The url prefix for the upstream crate system. Typically cargo's backing storage.");
 }
 
+pub trait LcsBase {
+  /** Retrieves all known crate keys. */
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, JobErr>;
+}
+
 /** A "LocalCrateService" repository source, which can furnish crates tarballs. */
-pub trait LcsRepositorySource: __LcsRepositorySource_BoxClone {
+pub trait LcsRepositorySource: LcsBase + __LcsRepositorySource_BoxClone {
   /**
    * Retrieves the provided CrateKey from the internal repository, and writes it into the 
    * destination directory.
    */
-  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr>;
+  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), JobErr>;
 }
 define_box_clone_boilerplate!(LcsRepositorySource, __LcsRepositorySource_BoxClone);
 
 /** A "LocalCrateService" repository sink, which can receive new crates. */
-pub trait LcsRepositorySink: __LcsRepositorySink_BoxClone {
-  /** Retrieves all known crate keys. */
-  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr>;
-
+pub trait LcsRepositorySink: LcsBase + __LcsRepositorySink_BoxClone {
   /** Uploads a new crate with the provide crate key for the file at the path. */
-  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result<(), LcsFetchErr>;
+  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result<(), JobErr>;
 }
 define_box_clone_boilerplate!(LcsRepositorySink, __LcsRepositorySink_BoxClone);
 
@@ -82,7 +84,7 @@ impl LocalFsLcsRepository {
   }
 
   /** Creates an LCS based out of a temporary directory. */
-  pub fn from_tmp() -> Result<LocalFsLcsRepository, LcsFetchErr> {
+  pub fn from_tmp() -> Result<LocalFsLcsRepository, JobErr> {
     let tempdir = try!(TempDir::new("local_fs_lcs_repo"));
     let index_path =
       tempdir.path().join("index.txt");
@@ -94,7 +96,7 @@ impl LocalFsLcsRepository {
     })
   }
 
-  pub fn from_cwd() -> Result<LocalFsLcsRepository, LcsFetchErr> {
+  pub fn from_cwd() -> Result<LocalFsLcsRepository, JobErr> {
     let cwd = try!(::std::env::current_dir());
     let index_path = cwd.join("index.txt");
     let _ = try!(OpenOptions::new()
@@ -134,30 +136,11 @@ impl LocalFsLcsRepository {
                                  lower_crate_name[2..4].to_owned())),
     }
   }
-
 }
 
-impl LcsRepositorySource for LocalFsLcsRepository {
-  /** Fetches the crate from the local file system, if available. */
-  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr> {
-    let crate_filename = format!("{name}-{version}.crate",
-                                 name = key.name,
-                                 version = key.version);
-    let crate_subdirectory = LocalFsLcsRepository::get_directory_for_crate(&key.name);
-    let crate_path = self.crates_path
-      .join(crate_subdirectory)
-      .join(&crate_filename);
-
-    let destination_crate = destination.join(crate_filename);
-
-    try!(fs::copy(crate_path, destination_crate));
-    Ok(())
-  }
-}
-
-impl LcsRepositorySink for LocalFsLcsRepository {
+impl LcsBase for LocalFsLcsRepository {
   /** Reads the index file for the LCS, and yields the parsed contents. */
-  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr> {
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, JobErr> {
     // TODO(acmcarther): Clean this API up. Its super unsafe
     let index_path =
       self.crates_path.join("index.txt");
@@ -175,9 +158,30 @@ impl LcsRepositorySink for LocalFsLcsRepository {
       }).collect();
     Ok(results)
   }
+}
 
+impl LcsRepositorySource for LocalFsLcsRepository {
+  /** Fetches the crate from the local file system, if available. */
+  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), JobErr> {
+    let crate_filename = format!("{name}-{version}.crate",
+                                 name = key.name,
+                                 version = key.version);
+    let crate_subdirectory = LocalFsLcsRepository::get_directory_for_crate(&key.name);
+    let crate_path = self.crates_path
+      .join(crate_subdirectory)
+      .join(&crate_filename);
+
+    let destination_crate = destination.join(crate_filename);
+
+    try!(fs::copy(crate_path, destination_crate));
+    Ok(())
+  }
+}
+
+
+impl LcsRepositorySink for LocalFsLcsRepository {
   /** Inserts a crate into the local directory, and appends it into the index. */
-  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result <(), LcsFetchErr> {
+  fn upload_crate(&mut self, key: &CrateKey, path: &Path) -> Result <(), JobErr> {
     // TODO(acmcarther): Clean this API up. Its super unsafe
     let crate_filename = format!("{name}-{version}.crate",
                                  name = key.name,
@@ -230,9 +234,9 @@ impl Default for S3LcsRepository {
   }
 }
 
-impl LcsRepositorySink for S3LcsRepository {
+impl LcsBase for S3LcsRepository {
   /** Queries S3 for the list of all crate objects in the configured bucket. */
-  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, LcsFetchErr> {
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, JobErr> {
     let request = ListObjectsRequest {
       bucket: self.s3_bucket_name.clone(),
       version: Some(1),
@@ -254,9 +258,11 @@ impl LcsRepositorySink for S3LcsRepository {
         }
       }).collect())
   }
+}
 
+impl LcsRepositorySink for S3LcsRepository {
   /** Inserts the provided crate file (at path) into S3. */
-  fn upload_crate(&mut self, _key: &CrateKey, _path: &Path) -> Result<(), LcsFetchErr> {
+  fn upload_crate(&mut self, _key: &CrateKey, _path: &Path) -> Result<(), JobErr> {
     // TODO(acmcarther): Implement
     warn!("S3LcsRepository::upload_crate is unimplemented");
     Ok(())
@@ -290,9 +296,17 @@ impl HttpLcsRepository {
   }
 }
 
+impl LcsBase for HttpLcsRepository {
+  /** Ostensibly reads full crate list from HTTP server. */
+  fn get_existing_crate_keys(&self) -> Result<Vec<CrateKey>, JobErr> {
+    // Doesn't work in practice -- can't generically enumerate all items
+    Err(JobErr::UnsupportedOperation)
+  }
+}
+
 impl LcsRepositorySource for HttpLcsRepository {
   /** Retrieves a crate into the destination directory by reading from the configured URL. */
-  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), LcsFetchErr>{
+  fn fetch_crate(&self, key: &CrateKey, destination: &Path) -> Result<(), JobErr>{
     let full_url = format!("{prefix}/{crate_name}/{crate_name}-{crate_version}.crate",
                            prefix=self.http_prefix,
                            crate_name=key.name,
@@ -330,7 +344,7 @@ pub mod testing {
   }
 
   /** Creates a complete LCS in temp containing the provided crates. */
-  pub fn create_localfs_for_testing(crates: &Vec<TestingCrate>) -> Result<LocalFsLcsRepository, LcsFetchErr> {
+  pub fn create_localfs_for_testing(crates: &Vec<TestingCrate>) -> Result<LocalFsLcsRepository, JobErr> {
     let mut lfs_lcs_repo = try!(LocalFsLcsRepository::from_tmp());
     let tempdir = try!(TempDir::new("seed_crates"));
 

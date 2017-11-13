@@ -64,12 +64,12 @@ fn main() {
 fn get_lcs_fetcher() -> Box<Job> {
   let destination = ::fetch_destination::CONFIG.get_value();
   match destination.as_str() {
-    "s3" => Box::new(LcsFetcherJob::from_crates_io_to_s3()),
-    "cwd" => Box::new(LcsFetcherJob::from_crates_io_to_cwd()),
+    "s3" => Box::new(LcsFetcherJob::from_crates_io_to_s3().unwrap()),
+    "cwd" => Box::new(LcsFetcherJob::from_crates_io_to_cwd().unwrap()),
     other => panic!("Unknown --fetch_destination \"{}\"", other),
   }
 }
 
 fn get_ais_backfiller() -> Box<Job> {
-  Box::new(AisBackfillerJob::default())
+  Box::new(AisBackfillerJob::for_upstream_indexes().unwrap())
 }
