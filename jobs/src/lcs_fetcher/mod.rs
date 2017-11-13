@@ -1,18 +1,17 @@
-use tempdir::TempDir;
+use ::Job;
+use ::JobErr;
 use common::cargo;
-use index::GenericIndex;
-use super::Job;
-use std::fs;
-use std::path::PathBuf;
-use std::collections::HashSet;
-use std::io;
-use aws_sdk_rust::aws::errors::s3::S3Error;
-use hyper;
+use index::KeyedByCrateKey;
+use index::crates_io::CratesIoIndex;
+use lcs_fetcher::repository::HttpLcsRepository;
 use lcs_fetcher::repository::LcsRepositorySink;
 use lcs_fetcher::repository::LcsRepositorySource;
 use lcs_fetcher::repository::LocalFsLcsRepository;
-use lcs_fetcher::repository::HttpLcsRepository;
 use lcs_fetcher::repository::S3LcsRepository;
+use std::collections::HashSet;
+use std::fs;
+use std::path::PathBuf;
+use tempdir::TempDir;
 
 mod flags {
   define_pub_cfg!(max_session_crates,
@@ -21,7 +20,7 @@ mod flags {
                   "The maximum number of crates to download in a single execution of lcs-fetcher.");
 }
 
-mod repository;
+pub mod repository;
 
 /**
  * A Job that syncs crate artifacts from upstream Crates.io to a LCS Repository.
@@ -31,7 +30,7 @@ mod repository;
  */
 #[derive(Builder)]
 pub struct LcsFetcherJob {
-  upstream_index: GenericIndex<cargo::IndexEntry>,
+  upstream_index: CratesIoIndex,
   lcs_source: Box<LcsRepositorySource>,
   lcs_sink: Box<LcsRepositorySink>,
   #[builder(default)]
@@ -52,41 +51,34 @@ impl Default for LcsFetcherParams {
   }
 }
 
-#[derive(Debug)]
-pub enum LcsFetchErr {
-  IoErr(io::Error),
-  HyperErr(hyper::Error),
-  S3Err(S3Error),
-}
-define_from_error_boilerplate!(io::Error, LcsFetchErr, LcsFetchErr::IoErr);
-define_from_error_boilerplate!(hyper::Error, LcsFetchErr, LcsFetchErr::HyperErr);
-define_from_error_boilerplate!(S3Error, LcsFetchErr, LcsFetchErr::S3Err);
-
 impl LcsFetcherJob {
-  pub fn from_crates_io_to_s3() -> LcsFetcherJob {
-    LcsFetcherJobBuilder::default()
-      .upstream_index(GenericIndex::crates_io_index())
+  pub fn from_crates_io_to_s3() -> Result<LcsFetcherJob, JobErr> {
+    Ok(LcsFetcherJobBuilder::default()
+      .upstream_index(try!(CratesIoIndex::upstream_index()))
       .lcs_source(Box::new(HttpLcsRepository::default()))
       .lcs_sink(Box::new(S3LcsRepository::default()))
       .build()
-      .unwrap()
+      .unwrap())
   }
 
-  pub fn from_crates_io_to_cwd() -> LcsFetcherJob {
-    LcsFetcherJobBuilder::default()
-      .upstream_index(GenericIndex::crates_io_index())
+  pub fn from_crates_io_to_cwd() -> Result<LcsFetcherJob, JobErr> {
+    Ok(LcsFetcherJobBuilder::default()
+      .upstream_index(try!(CratesIoIndex::upstream_index()))
       .lcs_source(Box::new(HttpLcsRepository::default()))
       .lcs_sink(Box::new(LocalFsLcsRepository::from_cwd().unwrap()))
       .build()
-      .unwrap()
+      .unwrap())
   }
 
-  fn run_now(&mut self) -> Result<(), LcsFetchErr> {
+  fn run_now(&mut self) -> Result<(), JobErr> {
     let existing_crate_keys = self.lcs_sink.get_existing_crate_keys()
       .unwrap()
       .into_iter()
       .collect::<HashSet<_>>();
-    let mut crate_keys_in_index = self.upstream_index.get_all_crate_keys();
+    let mut crate_keys_in_index: Vec<cargo::CrateKey> = self.upstream_index.get_crate_keys()
+      .iter()
+      .map(|c| (*c).clone())
+      .collect();
     crate_keys_in_index.sort_by_key(|k| k.name.to_lowercase());
 
     let keys_to_backfill = crate_keys_in_index
@@ -133,37 +125,73 @@ impl Job for LcsFetcherJob {
 
 #[cfg(test)]
 mod tests {
-  use index::GenericIndex;
-  use index::GenericIndexParamsBuilder;
-  use index;
-  use url::Url;
-  use std::str::FromStr;
+  use std::collections::HashMap;
+  use common::cargo;
+  use index::crates_io;
+  use tempdir::TempDir;
   use lcs_fetcher::LcsFetcherJobBuilder;
+  use lcs_fetcher::repository::LcsBase;
   use lcs_fetcher::repository::LocalFsLcsRepository;
+  use lcs_fetcher::repository::testing::TestingCrate;
+  use lcs_fetcher::repository;
 
   #[test]
   fn test_trivial_fetcher_doesnt_explode() {
     let source_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
     let dest_fs_lcs = LocalFsLcsRepository::from_tmp().unwrap();
-    let upstream_index = {
-      let tempdir = index::testing::seed_minimum_index();
-      let params = GenericIndexParamsBuilder::default()
-        .url(Url::from_str("http://invalid-url").unwrap())
-        .pre_pulled_index_path(Some(tempdir.path().to_path_buf()))
-        .build()
-        .unwrap();
-
-      GenericIndex::load_from_params(params).unwrap()
-    };
 
     let mut lcs_fetcher_job =
       LcsFetcherJobBuilder::default()
-        .upstream_index(upstream_index)
+        .upstream_index(crates_io::testing::get_minimum_index())
         .lcs_source(Box::new(source_fs_lcs))
         .lcs_sink(Box::new(dest_fs_lcs))
         .build()
         .unwrap();
 
     lcs_fetcher_job.run_now().unwrap();
+  }
+
+  #[test]
+  fn test_fetcher_copies_crates_from_source_into_dest() {
+    let test_crates = vec![
+      TestingCrate {
+        key: cargo::CrateKey {
+          name: "test".to_owned(),
+          version: "0.0.0".to_owned(),
+        },
+        contents: b"hello crate".to_vec(),
+      }
+    ];
+    let source_fs_lcs = repository::testing::create_localfs_for_testing(&test_crates).unwrap();
+    let dest_temp_dir = TempDir::new("test_destination").unwrap();
+    let dest_fs_lcs = LocalFsLcsRepository::new(dest_temp_dir.path());
+    let index = crates_io::testing::get_seeded_index(vec![
+      cargo::IndexEntry {
+        name: "test".to_owned(),
+        vers: "0.0.0".to_owned(),
+        deps: Vec::new(),
+        cksum: "111".to_owned(),
+        features: HashMap::new(),
+        yanked: None,
+      }
+    ]);
+
+    let mut lcs_fetcher_job =
+      LcsFetcherJobBuilder::default()
+        .upstream_index(index)
+        .lcs_source(Box::new(source_fs_lcs))
+        .lcs_sink(Box::new(dest_fs_lcs))
+        .build()
+        .unwrap();
+
+    lcs_fetcher_job.run_now().unwrap();
+
+    let dest_fs_lcs = LocalFsLcsRepository::new(dest_temp_dir.path());
+    assert_eq!(dest_fs_lcs.get_existing_crate_keys().unwrap(), vec![
+      cargo::CrateKey {
+        name: "test".to_owned(),
+        version: "0.0.0".to_owned()
+      }
+    ])
   }
 }

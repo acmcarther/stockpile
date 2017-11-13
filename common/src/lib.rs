@@ -41,19 +41,43 @@ pub mod cargo {
     pub kind: Option<String>,
   }
 
-  // Stockpile-specific data added to the index entry
-  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-  pub struct ExtraEntry {
-    dev_dependencies: Option<Vec<DependencyEntry>>,
-  }
-
   // Unique identifier for a Cargo crate
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
   pub struct CrateKey {
     pub name: String,
     pub version: String,
   }
+
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+  pub struct AugmentedIndexEntry {
+    pub name: String,
+    pub vers: String,
+    pub dev_dependencies: Option<Vec<DependencyEntry>>,
+  }
+
+  // TODO(acmcarther): Derive these from Ref T, not T
+  // The current implementation requires a pointless clone
+  impl From<IndexEntry> for CrateKey {
+    fn from(e: IndexEntry) -> CrateKey {
+      CrateKey {
+        name: e.name,
+        version: e.vers,
+      }
+    }
+  }
+
+  // TODO(acmcarther): Derive these from Ref T, not T
+  // The current implementation requires a pointless clone
+  impl From<AugmentedIndexEntry> for CrateKey {
+    fn from(e: AugmentedIndexEntry) -> CrateKey {
+      CrateKey {
+        name: e.name,
+        version: e.vers,
+      }
+    }
+  }
 }
+
 
 pub mod configuration {
   #[derive(Debug, Clone, Serialize, Deserialize)]
