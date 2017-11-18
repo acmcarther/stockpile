@@ -57,7 +57,7 @@ pub mod cargo {
 
   // TODO(acmcarther): Derive these from Ref T, not T
   // The current implementation requires a pointless clone
-  impl From<IndexEntry> for CrateKey {
+  impl ::std::convert::From<IndexEntry> for CrateKey {
     fn from(e: IndexEntry) -> CrateKey {
       CrateKey {
         name: e.name,
@@ -68,7 +68,7 @@ pub mod cargo {
 
   // TODO(acmcarther): Derive these from Ref T, not T
   // The current implementation requires a pointless clone
-  impl From<AugmentedIndexEntry> for CrateKey {
+  impl ::std::convert::From<AugmentedIndexEntry> for CrateKey {
     fn from(e: AugmentedIndexEntry) -> CrateKey {
       CrateKey {
         name: e.name,

@@ -198,7 +198,7 @@ pub mod testing {
 
   /** Constructs an index directory seeded with the provided crates. */
   pub fn seed_index_with_contents<T: Serialize + Clone>(index_entries: Vec<T>) -> TempDir 
-      where cargo::CrateKey: From<T> {
+      where cargo::CrateKey: ::std::convert::From<T> {
     let index_tempdir = index::testing::seed_minimum_index();
 
     for entry in index_entries.iter() {

@@ -60,7 +60,10 @@ impl CratesIoIndex {
     let loader = GenericIndexLoader::new(params.generic_params.clone());
     let (artifacts, contents) = try!(loader.load_index::<cargo::IndexEntry>());
     let keyed_contents = contents.into_iter()
-      .map(|content| (cargo::CrateKey::from(content.clone()), content))
+      .map(|content| {
+        let key = ::std::convert::From::from(content.clone());
+        (key, content)
+      })
       .collect::<HashMap<_, _>>();
 
     Ok(CratesIoIndex {
@@ -92,7 +95,7 @@ pub mod testing {
   use url::Url;
 
   pub fn get_seeded_index(entries: Vec<cargo::IndexEntry>) -> CratesIoIndex {
-    let tempdir = index::testing::seed_index_with_contents(entries);
+    let tempdir = index::testing::seed_index_with_contents::<cargo::IndexEntry>(entries);
     let params = CratesIoIndexParams {
       generic_params: GenericIndexParams {
         url: Url::parse("http://not-resolvable").unwrap(),
